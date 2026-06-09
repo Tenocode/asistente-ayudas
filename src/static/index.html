@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asistente Ayudas Públicas</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      background: #1a56db;
+      color: white;
+      padding: 1rem 1.5rem;
+      text-align: center;
+    }
+
+    header h1 { font-size: 1.15rem; font-weight: 600; }
+    header p  { font-size: 0.8rem; opacity: 0.85; margin-top: 0.2rem; }
+
+    #chat-container {
+      width: 100%;
+      max-width: 740px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      overflow: hidden;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+      padding-bottom: 0.5rem;
+    }
+
+    .msg {
+      max-width: 82%;
+      padding: 0.7rem 1rem;
+      border-radius: 1rem;
+      line-height: 1.55;
+      font-size: 0.93rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .msg.bot {
+      background: white;
+      border-bottom-left-radius: 0.25rem;
+      align-self: flex-start;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .msg.user {
+      background: #1a56db;
+      color: white;
+      border-bottom-right-radius: 0.25rem;
+      align-self: flex-end;
+    }
+
+    .msg.thinking {
+      color: #888;
+      font-style: italic;
+      background: white;
+      border-bottom-left-radius: 0.25rem;
+      align-self: flex-start;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    #input-area {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    #user-input {
+      flex: 1;
+      padding: 0.7rem 1rem;
+      border: 1.5px solid #ddd;
+      border-radius: 2rem;
+      font-size: 0.93rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    #user-input:focus { border-color: #1a56db; }
+
+    #send-btn {
+      padding: 0.7rem 1.4rem;
+      background: #1a56db;
+      color: white;
+      border: none;
+      border-radius: 2rem;
+      font-size: 0.93rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #send-btn:hover:not(:disabled) { background: #1447b2; }
+    #send-btn:disabled { background: #aaa; cursor: default; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Asistente de Ayudas Públicas</h1>
+    <p>Subvenciones y ayudas oficiales en España</p>
+  </header>
+
+  <div id="chat-container">
+    <div id="messages"></div>
+    <div id="input-area">
+      <input type="text" id="user-input" placeholder="Escribe tu respuesta..." autocomplete="off">
+      <button id="send-btn">Enviar</button>
+    </div>
+  </div>
+
+  <script>
+    let sessionId = null;
+
+    const messagesEl = document.getElementById('messages');
+    const inputEl    = document.getElementById('user-input');
+    const btnEl      = document.getElementById('send-btn');
+
+    function addMsg(text, role) {
+      const div = document.createElement('div');
+      div.className = `msg ${role}`;
+      div.textContent = text;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return div;
+    }
+
+    function setDisabled(disabled) {
+      btnEl.disabled   = disabled;
+      inputEl.disabled = disabled;
+    }
+
+    async function iniciar() {
+      try {
+        const res  = await fetch('/inicio');
+        const data = await res.json();
+        sessionId  = data.session_id;
+        addMsg(data.respuesta, 'bot');
+        inputEl.focus();
+      } catch {
+        addMsg('Error al conectar con el servidor. ¿Está arrancado?', 'bot');
+      }
+    }
+
+    async function enviar() {
+      const texto = inputEl.value.trim();
+      if (!texto) return;
+
+      inputEl.value = '';
+      setDisabled(true);
+      addMsg(texto, 'user');
+      const thinking = addMsg('Buscando...', 'thinking');
+
+      try {
+        const res = await fetch('/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, mensaje: texto }),
+        });
+        const data = await res.json();
+        sessionId = data.session_id;
+        thinking.remove();
+        addMsg(data.respuesta, 'bot');
+      } catch {
+        thinking.textContent = 'Error de conexión. Inténtalo de nuevo.';
+        thinking.style.color = 'red';
+      } finally {
+        setDisabled(false);
+        inputEl.focus();
+      }
+    }
+
+    btnEl.addEventListener('click', enviar);
+    inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') enviar(); });
+
+    iniciar();
+  </script>
+</body>
+</html>

@@ -1,8 +1,19 @@
+import re
 import ollama
 
 from buscar import buscar_filtrado
 
+
+def limpiar_texto(texto: str) -> str:
+    """Elimina caracteres no imprimibles y texto garbled de PDFs mal extraídos."""
+    # Reemplaza caracteres que no son ASCII imprimible ni español básico
+    texto = re.sub(r"[^\x20-\x7E\xA0-\xFF\n]", " ", texto)
+    # Colapsa espacios múltiples
+    texto = re.sub(r" {3,}", "  ", texto)
+    return texto.strip()
+
 MODELO = "llama3.1:8b"
+DISTANCIA_MAX = 0.82  # fragmentos con distancia mayor se descartan como irrelevantes
 
 COMUNIDADES = {
     "la rioja": "larioja", "rioja": "larioja", "larioja": "larioja",
@@ -31,14 +42,9 @@ CATEGORIAS = {
     "todas": "todas",
 }
 
-SISTEMA_RESPUESTA = """Eres un asistente especializado en ayudas y subvenciones públicas en España.
-Responde SIEMPRE en español, de forma clara y directa.
-Usa EXCLUSIVAMENTE la información de los fragmentos que se te proporcionan.
-Para cada ayuda relevante menciona: nombre, a quién va dirigida, requisitos principales y cómo solicitarla si aparece.
-Cita siempre el nombre de la convocatoria entre paréntesis.
-Si no hay información suficiente en los fragmentos, dilo claramente.
-Termina con: "⚠️ Información orientativa. Consulta la convocatoria oficial antes de solicitar."
-"""
+SISTEMA_RESPUESTA = """Eres un asesor de ayudas públicas en España. Responde en español, en tono amable y directo.
+Tu único trabajo es explicar al ciudadano las convocatorias que se te proporcionan. Nada más.
+No menciones ayudas que no estén en los textos. No inventes datos."""
 
 
 def normalizar(texto: str, tabla: dict) -> str | None:
@@ -82,32 +88,89 @@ def recoger_perfil() -> dict:
 
 
 def generar_respuesta(perfil: dict, resultados: list[dict]) -> str:
-    if not resultados:
-        return "No he encontrado ayudas relevantes para tu perfil en las convocatorias disponibles."
+    relevantes = [r for r in resultados if r["distancia"] <= DISTANCIA_MAX]
+
+    if not relevantes:
+        return (
+            "No he encontrado convocatorias de ayudas específicas para tu perfil en los documentos disponibles.\n\n"
+            "Te recomiendo consultar directamente el portal de subvenciones de tu comunidad autónoma."
+        )
+
+    # Detectar si el fallback devolvió resultados de otra comunidad
+    comunidad_solicitada = perfil.get("comunidad", "todas")
+    hay_resultados_foraneos = (
+        comunidad_solicitada != "todas"
+        and all(
+            r["ambito"] != comunidad_solicitada and r["ambito"] != "estatal"
+            for r in relevantes
+        )
+    )
+
+    # Python deduplica por nombre de ayuda, quedándose con el fragmento más relevante
+    ayudas: dict[str, dict] = {}
+    for r in relevantes:
+        nombre = r["nombre"]
+        if nombre not in ayudas or r["distancia"] < ayudas[nombre]["distancia"]:
+            ayudas[nombre] = r
+
+    # Máximo 3 ayudas para que el modelo no se pierda
+    top_ayudas = dict(list(ayudas.items())[:3])
+
+    # Lista de indicadores de leyes/reglamentos que no son convocatorias de ayuda
+    PALABRAS_LEY = ["cotizacion", "cotización", "subsidio por desempleo", "fogasa",
+                    "estatuto", "reglamento general", "bases mínimas"]
 
     fragmentos = []
-    for r in resultados:
-        fragmentos.append(
-            f"[{r['nombre']} | ámbito: {r['ambito']} | categoría: {r['categoria']}]\n{r['texto']}"
-        )
+    for i, (nombre, r) in enumerate(top_ayudas.items(), start=1):
+        texto_limpio = limpiar_texto(r["texto"])[:600]
+        # Marcamos en el contexto si parece ley para ayudar al modelo
+        es_ley = any(p in nombre.lower() for p in PALABRAS_LEY)
+        etiqueta = "[LEY/REGLAMENTO - no es una ayuda directa]" if es_ley else "[CONVOCATORIA DE AYUDA]"
+        fragmentos.append(f"[{i}] {nombre} {etiqueta}\n{texto_limpio}")
     contexto = "\n\n---\n\n".join(fragmentos)
 
-    prompt = f"""El usuario vive en {perfil['comunidad_raw']} y busca: {perfil['descripcion']}
+    aviso_foraneo = (
+        f"\nNOTA: No hay datos específicos para {perfil['comunidad_raw']} en esta categoría. "
+        "Los resultados son de otras comunidades — pueden servir de referencia.\n"
+        if hay_resultados_foraneos else ""
+    )
 
-Fragmentos de convocatorias oficiales encontradas:
+    prompt = f"""Ciudadano en {perfil['comunidad_raw']} busca: "{perfil['descripcion']}"
+{aviso_foraneo}
+Aquí tienes {len(top_ayudas)} convocatoria(s) encontrada(s):
 
 {contexto}
 
-Responde basándote ÚNICAMENTE en los fragmentos anteriores."""
+Para cada convocatoria marcada [CONVOCATORIA DE AYUDA], explica: para quién es, qué cubre, importe y plazo si aparecen.
+Para las marcadas [LEY/REGLAMENTO], escribe solo "no aplicable".
 
-    respuesta = ollama.chat(
-        model=MODELO,
-        messages=[
-            {"role": "system", "content": SISTEMA_RESPUESTA},
-            {"role": "user", "content": prompt},
-        ],
+Termina con: "Información orientativa. Consulta la convocatoria oficial antes de solicitar."
+"""
+
+    prefijo = (
+        f"No tengo datos de {perfil['comunidad_raw']} para esta categoría, "
+        "pero en otras comunidades existen estas ayudas similares:\n\n"
+        if hay_resultados_foraneos else ""
     )
-    return respuesta.message.content
+
+    try:
+        respuesta = ollama.chat(
+            model=MODELO,
+            messages=[
+                {"role": "system", "content": SISTEMA_RESPUESTA},
+                {"role": "user", "content": prompt},
+            ],
+            options={"temperature": 0},
+        )
+        return prefijo + respuesta.message.content
+    except Exception:
+        nombres = "\n".join(f"- {n}" for n in top_ayudas)
+        return (
+            prefijo
+            + f"He encontrado estas convocatorias que podrían interesarte:\n{nombres}\n\n"
+            "Consulta cada convocatoria directamente para obtener los detalles.\n\n"
+            "Información orientativa. Consulta la convocatoria oficial antes de solicitar."
+        )
 
 
 def chat() -> None:
@@ -123,7 +186,7 @@ def chat() -> None:
             pregunta=perfil["descripcion"],
             comunidad=perfil["comunidad"],
             categoria=perfil["categoria"],
-            k=5,
+            k=8,
         )
 
         # Fallback 1: misma categoría en cualquier comunidad
@@ -133,7 +196,7 @@ def chat() -> None:
                 pregunta=perfil["descripcion"],
                 comunidad="todas",
                 categoria=perfil["categoria"],
-                k=5,
+                k=8,
             )
 
         # Fallback 2: misma comunidad sin filtro de categoría
@@ -143,7 +206,7 @@ def chat() -> None:
                 pregunta=perfil["descripcion"],
                 comunidad=perfil["comunidad"],
                 categoria="todas",
-                k=5,
+                k=8,
             )
 
         # Fallback 3: búsqueda libre sin filtros
@@ -153,7 +216,7 @@ def chat() -> None:
                 pregunta=perfil["descripcion"],
                 comunidad="todas",
                 categoria="todas",
-                k=5,
+                k=8,
             )
 
         print("=" * 60)

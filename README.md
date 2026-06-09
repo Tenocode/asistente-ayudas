@@ -11,7 +11,7 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 
 ## Estado actual
 
-**Fases 1, 2 y 3 completas. Siguiente: Fase 4 — interfaz web.**
+**Fases 1–4 completas. Siguiente: Fase 5 — pipeline de actualización.**
 
 | Paso | Estado |
 |---|---|
@@ -22,22 +22,21 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 | Búsqueda semántica (`src/buscar.py`) | ✅ Búsqueda coseno con pgvector funcionando |
 | Respuesta con LLM (`src/responder.py`) | ✅ Respuestas en español citando fuentes (Ollama + llama3.1:8b) |
 | Conversación de perfilado (`src/chat.py`) | ✅ Perfil híbrido: preguntas en Python + LLM para respuesta |
-| Interfaz web (FastAPI + chat) | ⬜ Fase 4 |
+| Interfaz web (`src/api.py` + `src/static/index.html`) | ✅ FastAPI + chat web. Arrancar: `python src/api.py` |
+| Calidad de respuestas LLM | ✅ Sin alucinaciones: dedup Python + umbral distancia + limpieza texto |
 | Pipeline de actualización | ⬜ Fase 5 |
 
 ---
 
-## Siguiente paso concreto — Fase 4: interfaz web
+## Siguiente paso concreto — Fase 5: pipeline de actualización
 
-Crear una web con chat donde el usuario use el asistente desde el navegador.
-Backend con FastAPI (Python) que expone un endpoint `/chat`. Frontend sencillo con HTML/JS.
-El flujo actual de `src/chat.py` se convierte en una API REST.
+Proceso que detecta convocatorias nuevas, descarga solo lo que no está ya indexado y
+reindexa sin borrar lo anterior. Marca plazos abiertos/cerrados.
 
 Datos actuales: 66 PDFs, 1113 fragmentos. Categorías cubiertas: formacion, empleo, vivienda,
 carnet, movilidad, cultura, dependencia. Ámbitos: estatal, larioja, extremadura, murcia.
 
-Modelo de embeddings actualizado a `paraphrase-multilingual-MiniLM-L12-v2` — resuelve los
-fallos de búsqueda en español (ej. "carnet de coche" → "permiso de conducir").
+Modelo de embeddings: `paraphrase-multilingual-MiniLM-L12-v2` (dim 384, multilingüe).
 
 ---
 

@@ -6,9 +6,18 @@ from init_db import DSN
 MODELO = "paraphrase-multilingual-MiniLM-L12-v2"
 TOP_K = 5
 
+_modelo_cache: SentenceTransformer | None = None
+
+
+def _get_modelo() -> SentenceTransformer:
+    global _modelo_cache
+    if _modelo_cache is None:
+        _modelo_cache = SentenceTransformer(MODELO)
+    return _modelo_cache
+
 
 def buscar(pregunta: str, k: int = TOP_K) -> list[dict]:
-    modelo = SentenceTransformer(MODELO)
+    modelo = _get_modelo()
     embedding = modelo.encode(pregunta)
     vector_str = str(embedding.tolist())
 
@@ -44,11 +53,7 @@ def buscar_filtrado(
     categoria: str | None = None,
     k: int = TOP_K,
 ) -> list[dict]:
-    """
-    Como buscar() pero filtra por comunidad (incluyendo siempre 'estatal')
-    y opcionalmente por categoría.
-    """
-    modelo = SentenceTransformer(MODELO)
+    modelo = _get_modelo()
     embedding = modelo.encode(pregunta)
     vector_str = str(embedding.tolist())
 
