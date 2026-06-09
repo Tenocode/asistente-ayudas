@@ -1,4 +1,3 @@
-Avales ICO primera vivienda jovenes | estatal | vivienda | https://www.boe.es/boe/dias/2024/05/09/pdfs/BOE-A-2024-9128.pdf
 Becas generales postobligatorias 2026-2027 | estatal | formacion | https://www.boe.es/boe/dias/2026/03/25/pdfs/BOE-B-2026-9261.pdf
 Becas apoyo educativo 2026-2027 | estatal | formacion | https://www.boe.es/boe/dias/2026/05/08/pdfs/BOE-B-2026-14562.pdf
 Becas inmersion linguistica ingles 2026 | estatal | formacion | https://www.boe.es/boe/dias/2026/02/05/pdfs/BOE-B-2026-3168.pdf
@@ -7,3 +6,61 @@ Cuerpo Europeo de Solidaridad 2026 | estatal | formacion | https://www.boe.es/bo
 TandEM menores de 30 | estatal | empleo | https://www.boe.es/boe/dias/2026/03/03/pdfs/BOE-B-2026-6521.pdf
 Injuve Creacion Joven 2026-2027 | estatal | empleo | https://www.injuve.es/sites/default/files/adjuntos/2026/05/260407%20Resoluci%C3%B3n%20Conv.%20A.%20Creaci%C3%B3n%2026_27.pdf.xsig_.pdf
 Certamen Nacional Jovenes Emprendedores 2026 | estatal | empleo | https://www.injuve.es/sites/default/files/adjuntos/2026/04/Resolucion_convocatoria_CertNJEmprendedores26.pdf.xsig_.pdf
+Becas Culturex 2026-2027 | estatal | formacion | https://www.boe.es/boe/dias/2026/04/15/pdfs/BOE-B-2026-11645.pdf
+Becas Colegio de Europa 2026 | estatal | movilidad | https://www.boe.es/boe/dias/2026/05/20/pdfs/BOE-B-2026-16320.pdf
+Primera experiencia profesional SEPE 2025 | estatal | empleo | https://www.boe.es/boe/dias/2025/07/29/pdfs/BOE-B-2025-27743.pdf
+Subvenciones SEPE empleo y formacion 2026 | estatal | empleo | https://www.boe.es/boe/dias/2026/05/07/pdfs/BOE-A-2026-9879.pdf
+Becas deportistas CAR Sant Cugat 2026-2027 | estatal | cultura | https://www.boe.es/boe/dias/2026/04/08/pdfs/BOE-B-2026-10813.pdf
+Ayudas preparacion oposiciones justicia 2026 | estatal | formacion | https://www.boe.es/boe/dias/2026/04/10/pdfs/BOE-B-2026-10998.pdf
+Beca Tribunal Constitucional biblioteconomia 2026 | estatal | formacion | https://www.boe.es/boe/dias/2026/04/09/pdfs/BOE-A-2026-7984.pdf
+Ayudas CEPC Master Derecho Constitucional 2026 | estatal | formacion | https://www.boe.es/boe/dias/2026/05/15/pdfs/BOE-B-2026-15543.pdf
+Ayudas formacion transporte por carretera 2026 | estatal | formacion | https://www.boe.es/boe/dias/2026/05/30/pdfs/BOE-B-2026-17965.pdf
+Ayudas Aula Mentor 2026 | estatal | formacion | https://www.boe.es/boe/dias/2026/06/03/pdfs/BOE-B-2026-18469.pdf
+Cursos tutorizados profesorado 2026 | estatal | formacion | https://www.boe.es/boe/dias/2026/05/29/pdfs/BOE-B-2026-17579.pdf
+Ayudas agrupaciones centros educativos 2026 | estatal | formacion | https://www.boe.es/boe/dias/2026/06/04/pdfs/BOE-B-2026-18620.pdf
+Ayudas libros de texto 2026-2027 | estatal | formacion | https://www.boe.es/boe/dias/2026/05/13/pdfs/BOE-B-2026-15334.pdf
+Ayudas comedor escolar 2026-2027 | estatal | formacion | https://www.boe.es/boe/dias/2026/05/27/pdfs/BOE-B-2026-17381.pdf
+Ayudas transporte escolar 2026-2027 | estatal | formacion | https://www.boe.es/boe/dias/2026/05/27/pdfs/BOE-B-2026-17382.pdf
+Ayudas proyectos culturales impacto social 2026 | estatal | cultura | https://www.boe.es/boe/dias/2026/04/10/pdfs/BOE-B-2026-10999.pdf
+Ayudas creacion de comic 2026 | estatal | cultura | https://www.boe.es/boe/dias/2026/06/04/pdfs/BOE-B-2026-18666.pdf
+Ayudas guiones largometrajes 2026 | estatal | cultura | https://www.boe.es/boe/dias/2026/05/28/pdfs/BOE-B-2026-17478.pdf
+Ayudas produccion largometrajes 2026 | estatal | cultura | https://www.boe.es/boe/dias/2026/05/15/pdfs/BOE-B-2026-15547.pdf
+Ayudas distribucion internacional peliculas 2026 | estatal | cultura | https://www.boe.es/boe/dias/2026/04/25/pdfs/BOE-B-2026-13098.pdf
+Ayudas traduccion libros lenguas del Estado 2026 | estatal | cultura | https://www.boe.es/boe/dias/2026/04/08/pdfs/BOE-B-2026-10816.pdf
+Bases subvenciones juventud La Rioja | larioja | formacion | https://ias1.larioja.org/boletin/Bor_Boletin_visor_Servlet?referencia=5276591-1-PDF-509837
+Plan estrategico cultura deporte juventud La Rioja 2024-2026 | larioja | cultura | https://ckan.larioja.org/dataset/417adff1-6b4b-4c1c-8396-f3de5f45f951/resource/b4a70f89-f010-41fd-a42b-b811824b9a49/download/resol-1-modificacion-pea-2024-2026.pdf
+Ayudas alquiler vivienda jovenes La Rioja 2022-2025 | larioja | vivienda | https://ias1.larioja.org/boletin/Bor_Boletin_visor_Servlet?referencia=22101745-1-PDF-548641
+Subvenciones emancipacion juvenil formacion La Rioja 2026 | larioja | formacion | https://ias1.larioja.org/boletin/Bor_Boletin_visor_Servlet?referencia=39670836-1-PDF-576207
+Subvenciones juventud jovenes titulo individual La Rioja 2026 | larioja | formacion | https://ias1.larioja.org/boletin/Bor_Boletin_visor_Servlet?referencia=39670832-1-PDF-576204
+Subvenciones iniciativas emblematicas emancipacion juvenil La Rioja 2026 | larioja | empleo | https://ias1.larioja.org/boletin/Bor_Boletin_visor_Servlet?referencia=39670857-1-PDF-576208
+Plan Estatal Vivienda 2026-2030 | estatal | vivienda | https://www.boe.es/boe/dias/2026/04/23/pdfs/BOE-A-2026-8872.pdf
+Ayudas rehabilitacion edificios titularidad publica 2026 | estatal | vivienda | https://www.boe.es/boe/dias/2026/04/29/pdfs/BOE-A-2026-9349.pdf
+Bono Alquiler Joven Plan Estatal Vivienda 2022-2025 | estatal | vivienda | https://www.boe.es/boe/dias/2022/01/19/pdfs/BOE-A-2022-802.pdf
+Ayudas rehabilitacion residencial Next Generation | estatal | vivienda | https://www.boe.es/boe/dias/2021/10/06/pdfs/BOE-A-2021-16233.pdf
+Cuota reducida autonomos nuevo sistema cotizacion | estatal | empleo | https://www.boe.es/boe/dias/2022/07/27/pdfs/BOE-A-2022-12482.pdf
+Cotizacion Seguridad Social autonomos desempleo FOGASA 2024 | estatal | empleo | https://www.boe.es/boe/dias/2024/01/30/pdfs/BOE-A-2024-1691.pdf
+Cotizacion Seguridad Social autonomos desempleo FOGASA 2025 | estatal | empleo | https://www.boe.es/boe/dias/2025/02/26/pdfs/BOE-A-2025-3780.pdf
+Reforma subsidio por desempleo 2024 | estatal | empleo | https://www.boe.es/boe/dias/2024/05/22/pdfs/BOE-A-2024-10235.pdf
+Prestaciones FOGASA modelos 2025 | estatal | empleo | https://www.boe.es/boe/dias/2025/01/18/pdfs/BOE-A-2025-860.pdf
+Contrato formativo en alternancia 2025 | estatal | empleo | https://www.boe.es/boe/dias/2025/11/27/pdfs/BOE-A-2025-24011.pdf
+Bonificaciones contrato formacion en alternancia 2026 | estatal | empleo | https://www.boe.es/boe/dias/2026/05/08/pdfs/BOE-A-2026-10031.pdf
+Subvenciones personas discapacidad Ceuta y Melilla 2026 | estatal | dependencia | https://www.boe.es/boe/dias/2026/06/03/pdfs/BOE-B-2026-18498.pdf
+Subvenciones turismo y termalismo discapacidad 2026 | estatal | dependencia | https://www.boe.es/boe/dias/2026/05/27/pdfs/BOE-B-2026-17408.pdf
+Fortalecimiento sistema dependencia 2025 | estatal | dependencia | https://www.boe.es/boe/dias/2025/10/22/pdfs/BOE-A-2025-21205.pdf
+Medidas dependencia ELA 2026 | estatal | dependencia | https://www.boe.es/boe/dias/2026/01/13/pdfs/BOE-A-2026-772.pdf
+Prestaciones economicas dependencia 2026 | estatal | dependencia | https://www.boe.es/boe/dias/2026/04/28/pdfs/BOE-A-2026-9282.pdf
+Bono formacion permiso de conducir Extremadura 2026 | extremadura | carnet | https://doe.juntaex.es/pdfs/doe/2026/130o/26060049.pdf
+Bases bono formacion permiso de conducir Extremadura 2026 | extremadura | carnet | https://doe.juntaex.es/pdfs/doe/2026/130o/26060002.pdf
+Ayudas autoescuelas permiso de conducir jovenes Murcia 2025 | murcia | carnet | https://www.borm.es/services/boletin/ano/2025/numero/254/pdf
+Subvenciones consolidacion trabajo autonomo La Rioja 2026 | larioja | empleo | https://www.ader.es/fileadmin/redactor/ayudas/normativa/2026-normativa/Convocatoria_AUT_2026.pdf
+Promocion emprendedores ADER La Rioja 2026 | larioja | empleo | https://www.ader.es/fileadmin/redactor/ayudas/normativa/2026-normativa/PPA_convocatoria_2026.pdf
+Nuevas empresas base tecnologica TechFabLab La Rioja 2026 | larioja | empleo | https://www.ader.es/fileadmin/redactor/ayudas/normativa/2026-normativa/EBT_y_RET_2026_Convocatoria_firmada.pdf
+Becas y ayudas desempleados acciones formativas La Rioja 2025-2026 | larioja | formacion | https://fp.larioja.org/docs/2%C2%BA%20Triptico%20BECAS-AYUDAS.pdf
+Erasmus+ linea deporte 2025 | estatal | movilidad | https://www.boe.es/boe/dias/2025/06/21/pdfs/BOE-B-2025-23457.pdf
+Bases reguladoras Erasmus+ juventud y deporte 2026 | estatal | movilidad | https://www.boe.es/boe/dias/2026/05/13/pdfs/BOE-A-2026-10325.pdf
+Becas MAEC-AECID capacitacion jovenes espanoles 2025-2026 | estatal | movilidad | https://www.boe.es/boe/dias/2025/11/18/pdfs/BOE-B-2025-42429.pdf
+Becas MAEC-AECID Colegio de Europa 2025-2026 | estatal | movilidad | https://www.boe.es/boe/dias/2025/05/14/pdfs/BOE-B-2025-17470.pdf
+Lectorados MAEC-AECID universidades extranjeras 2026-2027 | estatal | movilidad | https://www.boe.es/boe/dias/2025/12/27/pdfs/BOE-B-2025-47882.pdf
+Becas MAEC-AECID America Latina Africa Asia Escuela Diplomatica 2026-2027 | estatal | movilidad | https://www.boe.es/boe/dias/2026/05/20/pdfs/BOE-B-2026-16321.pdf
+Becas MAEC-AECID Real Academia de Espana en Roma 2026-2027 | estatal | movilidad | https://www.boe.es/boe/dias/2026/05/20/pdfs/BOE-B-2026-16319.pdf
+Becas MAEC-AECID Real Academia de Espana en Roma 2025-2026 | estatal | movilidad | https://www.boe.es/boe/dias/2025/06/06/pdfs/BOE-B-2025-20976.pdf
