@@ -1,19 +1,21 @@
 import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import ollama
 
-from buscar import buscar_filtrado
+from rag.buscar import buscar_filtrado
 
 
 def limpiar_texto(texto: str) -> str:
-    """Elimina caracteres no imprimibles y texto garbled de PDFs mal extraídos."""
-    # Reemplaza caracteres que no son ASCII imprimible ni español básico
     texto = re.sub(r"[^\x20-\x7E\xA0-\xFF\n]", " ", texto)
-    # Colapsa espacios múltiples
     texto = re.sub(r" {3,}", "  ", texto)
     return texto.strip()
 
 MODELO = "llama3.1:8b"
-DISTANCIA_MAX = 0.82  # fragmentos con distancia mayor se descartan como irrelevantes
+DISTANCIA_MAX = 0.82
 
 COMUNIDADES = {
     "la rioja": "larioja", "rioja": "larioja", "larioja": "larioja",
@@ -58,7 +60,6 @@ def normalizar(texto: str, tabla: dict) -> str | None:
 def recoger_perfil() -> dict:
     print("\n--- Cuéntame un poco sobre ti ---\n")
 
-    # Comunidad
     while True:
         comunidad_raw = input("¿En qué comunidad autónoma vives? > ").strip()
         comunidad = normalizar(comunidad_raw, COMUNIDADES)
@@ -66,7 +67,6 @@ def recoger_perfil() -> dict:
             break
         print("No he reconocido esa comunidad. Prueba con: La Rioja, Murcia, Extremadura, Madrid, todas...")
 
-    # Tipo de ayuda
     while True:
         tipo_raw = input("¿Qué tipo de ayuda buscas? (vivienda, carnet, empleo, formación, movilidad, cultura...) > ").strip()
         categoria = normalizar(tipo_raw, CATEGORIAS)
@@ -74,7 +74,6 @@ def recoger_perfil() -> dict:
             break
         print("No he reconocido ese tipo. Prueba con: vivienda, carnet de conducir, trabajo, becas, extranjero...")
 
-    # Descripción libre
     descripcion = input("Cuéntame más sobre lo que necesitas (puedes ser breve): > ").strip()
     if not descripcion:
         descripcion = tipo_raw
@@ -96,7 +95,6 @@ def generar_respuesta(perfil: dict, resultados: list[dict]) -> str:
             "Te recomiendo consultar directamente el portal de subvenciones de tu comunidad autónoma."
         )
 
-    # Detectar si el fallback devolvió resultados de otra comunidad
     comunidad_solicitada = perfil.get("comunidad", "todas")
     hay_resultados_foraneos = (
         comunidad_solicitada != "todas"
@@ -106,27 +104,24 @@ def generar_respuesta(perfil: dict, resultados: list[dict]) -> str:
         )
     )
 
-    # Python deduplica por nombre de ayuda, quedándose con el fragmento más relevante
     ayudas: dict[str, dict] = {}
     for r in relevantes:
         nombre = r["nombre"]
         if nombre not in ayudas or r["distancia"] < ayudas[nombre]["distancia"]:
             ayudas[nombre] = r
 
-    # Máximo 3 ayudas para que el modelo no se pierda
     top_ayudas = dict(list(ayudas.items())[:3])
 
-    # Lista de indicadores de leyes/reglamentos que no son convocatorias de ayuda
     PALABRAS_LEY = ["cotizacion", "cotización", "subsidio por desempleo", "fogasa",
                     "estatuto", "reglamento general", "bases mínimas"]
 
     fragmentos = []
     for i, (nombre, r) in enumerate(top_ayudas.items(), start=1):
         texto_limpio = limpiar_texto(r["texto"])[:600]
-        # Marcamos en el contexto si parece ley para ayudar al modelo
         es_ley = any(p in nombre.lower() for p in PALABRAS_LEY)
         etiqueta = "[LEY/REGLAMENTO - no es una ayuda directa]" if es_ley else "[CONVOCATORIA DE AYUDA]"
-        fragmentos.append(f"[{i}] {nombre} {etiqueta}\n{texto_limpio}")
+        url = r.get("url_oficial") or "sin URL oficial registrada"
+        fragmentos.append(f"[{i}] {nombre} {etiqueta}\nFuente: {url}\n{texto_limpio}")
     contexto = "\n\n---\n\n".join(fragmentos)
 
     aviso_foraneo = (
@@ -164,7 +159,10 @@ Termina con: "Información orientativa. Consulta la convocatoria oficial antes d
         )
         return prefijo + respuesta.message.content
     except Exception:
-        nombres = "\n".join(f"- {n}" for n in top_ayudas)
+        nombres = "\n".join(
+            f"- {n} ({r.get('url_oficial') or 'sin URL oficial registrada'})"
+            for n, r in top_ayudas.items()
+        )
         return (
             prefijo
             + f"He encontrado estas convocatorias que podrían interesarte:\n{nombres}\n\n"
@@ -189,7 +187,6 @@ def chat() -> None:
             k=8,
         )
 
-        # Fallback 1: misma categoría en cualquier comunidad
         if not resultados and perfil["categoria"] != "todas":
             print("(Sin resultados en tu comunidad — mostrando ayudas de la misma categoría en otras comunidades...)\n")
             resultados = buscar_filtrado(
@@ -199,7 +196,6 @@ def chat() -> None:
                 k=8,
             )
 
-        # Fallback 2: misma comunidad sin filtro de categoría
         if not resultados and perfil["comunidad"] != "todas":
             print("(Ampliando a todas las categorías de tu comunidad...)\n")
             resultados = buscar_filtrado(
@@ -209,7 +205,6 @@ def chat() -> None:
                 k=8,
             )
 
-        # Fallback 3: búsqueda libre sin filtros
         if not resultados:
             print("(Búsqueda general sin filtros...)\n")
             resultados = buscar_filtrado(

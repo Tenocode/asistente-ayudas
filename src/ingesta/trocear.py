@@ -2,13 +2,13 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-DIRECTORIO_PDFS = Path(__file__).parent.parent / "data" / "convocatorias"
-TAMANO_FRAGMENTO = 500   # palabras
-SOLAPAMIENTO = 50        # palabras
+# Tres niveles arriba desde src/ingesta/ → raíz del proyecto
+DIRECTORIO_PDFS = Path(__file__).parent.parent.parent / "data" / "convocatorias"
+TAMANO_FRAGMENTO = 500
+SOLAPAMIENTO = 50
 
 
 def extraer_texto(ruta_pdf: Path) -> str:
-    """Devuelve todo el texto de un PDF concatenando todas sus páginas."""
     lector = PdfReader(ruta_pdf)
     paginas = [pagina.extract_text() or "" for pagina in lector.pages]
     texto = "\n".join(paginas)
@@ -16,10 +16,6 @@ def extraer_texto(ruta_pdf: Path) -> str:
 
 
 def trocear(texto: str, tamano: int, solapamiento: int) -> list[str]:
-    """
-    Parte texto en fragmentos de `tamano` palabras con `solapamiento` palabras
-    de contexto compartido entre fragmentos consecutivos.
-    """
     palabras = texto.split()
     fragmentos = []
     inicio = 0
@@ -37,10 +33,6 @@ def trocear(texto: str, tamano: int, solapamiento: int) -> list[str]:
 
 
 def procesar_pdfs(directorio: Path) -> list[dict]:
-    """
-    Lee todos los PDFs del directorio y devuelve una lista de dicts con
-    las claves 'origen' (nombre del archivo) y 'texto' (texto del fragmento).
-    """
     resultado = []
     pdfs = sorted(directorio.glob("*.pdf"))
 
@@ -63,24 +55,3 @@ def procesar_pdfs(directorio: Path) -> list[dict]:
         print(f"  {ruta_pdf.name}: {len(fragmentos)} fragmentos")
 
     return resultado
-
-
-def main() -> None:
-    print(f"Leyendo PDFs de: {DIRECTORIO_PDFS}\n")
-    fragmentos = procesar_pdfs(DIRECTORIO_PDFS)
-
-    print(f"\nTotal de fragmentos generados: {len(fragmentos)}")
-    print("\n" + "=" * 60)
-    print("FRAGMENTO 1")
-    print("=" * 60)
-    print(f"Origen : {fragmentos[0]['origen']}")
-    print(f"Texto  :\n{fragmentos[0]['texto']}")
-    print("\n" + "=" * 60)
-    print("FRAGMENTO 2")
-    print("=" * 60)
-    print(f"Origen : {fragmentos[1]['origen']}")
-    print(f"Texto  :\n{fragmentos[1]['texto']}")
-
-
-if __name__ == "__main__":
-    main()

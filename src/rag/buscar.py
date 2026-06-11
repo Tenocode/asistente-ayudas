@@ -1,7 +1,12 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import psycopg2
 from sentence_transformers import SentenceTransformer
 
-from init_db import DSN
+from db.init_db import DSN
 
 MODELO = "paraphrase-multilingual-MiniLM-L12-v2"
 TOP_K = 5
@@ -25,9 +30,12 @@ def buscar(pregunta: str, k: int = TOP_K) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT nombre, ambito, categoria, texto,
-                       embedding <=> %s::vector AS distancia
+                SELECT fuentes.nombre, fuentes.ambito, fuentes.categoria,
+                       fuentes.url_oficial, fuentes.tipo_fuente,
+                       fragmentos.texto,
+                       fragmentos.embedding <=> %s::vector AS distancia
                 FROM fragmentos
+                JOIN fuentes ON fuentes.id = fragmentos.fuente_id
                 ORDER BY distancia ASC
                 LIMIT %s;
                 """,
@@ -40,8 +48,10 @@ def buscar(pregunta: str, k: int = TOP_K) -> list[dict]:
             "nombre": fila[0],
             "ambito": fila[1],
             "categoria": fila[2],
-            "texto": fila[3],
-            "distancia": round(fila[4], 4),
+            "url_oficial": fila[3],
+            "tipo_fuente": fila[4],
+            "texto": fila[5],
+            "distancia": round(fila[6], 4),
         }
         for fila in filas
     ]
@@ -61,19 +71,22 @@ def buscar_filtrado(
     params: list = [vector_str]
 
     if comunidad and comunidad != "todas":
-        condiciones.append("(ambito = %s OR ambito = 'estatal')")
+        condiciones.append("(fuentes.ambito = %s OR fuentes.ambito = 'estatal')")
         params.append(comunidad)
     if categoria and categoria != "todas":
-        condiciones.append("categoria = %s")
+        condiciones.append("fuentes.categoria = %s")
         params.append(categoria)
 
     where = ("WHERE " + " AND ".join(condiciones)) if condiciones else ""
     params.append(k)
 
     sql = f"""
-        SELECT nombre, ambito, categoria, texto,
-               embedding <=> %s::vector AS distancia
+        SELECT fuentes.nombre, fuentes.ambito, fuentes.categoria,
+               fuentes.url_oficial, fuentes.tipo_fuente,
+               fragmentos.texto,
+               fragmentos.embedding <=> %s::vector AS distancia
         FROM fragmentos
+        JOIN fuentes ON fuentes.id = fragmentos.fuente_id
         {where}
         ORDER BY distancia ASC
         LIMIT %s;
@@ -89,8 +102,10 @@ def buscar_filtrado(
             "nombre": fila[0],
             "ambito": fila[1],
             "categoria": fila[2],
-            "texto": fila[3],
-            "distancia": round(fila[4], 4),
+            "url_oficial": fila[3],
+            "tipo_fuente": fila[4],
+            "texto": fila[5],
+            "distancia": round(fila[6], 4),
         }
         for fila in filas
     ]

@@ -31,5 +31,9 @@ Thumbs.db
 # Datos locales (PDFs, etc.)
 data/convocatorias/*.pdf
 
+# Archivos generados por el pipeline BDNS (se regeneran en cada ejecucion)
+data/candidatos_bdns.jsonl
+debug.log
+
 # Jupyter
 .ipynb_checkpoints/
