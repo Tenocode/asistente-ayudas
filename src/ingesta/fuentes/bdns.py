@@ -15,6 +15,7 @@ import json
 import sys
 import time
 from datetime import date, datetime
+from html.parser import HTMLParser
 from pathlib import Path
 
 import requests
@@ -152,7 +153,7 @@ def obtener_detalle(numero_convocatoria: str) -> dict | None:
     """
     Obtiene el detalle completo de una convocatoria por su número BDNS.
     Campos útiles: presupuestoTotal, fechaFinSolicitud, descripcionFinalidad,
-                   regiones, tiposBeneficiarios, documents (lista de PDFs).
+                   regiones, tiposBeneficiarios, documentos (lista de PDFs), anuncios.
     """
     try:
         respuesta = requests.get(
@@ -172,15 +173,40 @@ def url_pdf(id_documento: int) -> str:
 
 def primer_pdf(detalle: dict) -> str | None:
     """Devuelve la URL de descarga del primer PDF disponible en el detalle."""
-    for doc in detalle.get("documents", []):
+    docs = detalle.get("documentos", [])
+    for doc in docs:
         nombre = (doc.get("nombreFic") or "").lower()
         if doc.get("id") and nombre.endswith(".pdf"):
             return url_pdf(doc["id"])
-    # Si no hay .pdf explícito, usa el primer documento disponible
-    docs = detalle.get("documents", [])
+    # Sin .pdf explícito: usa el primer documento disponible
     if docs and docs[0].get("id"):
         return url_pdf(docs[0]["id"])
     return None
+
+
+def _strip_html(html: str) -> str:
+    """Extrae texto plano de HTML usando el parser de la stdlib."""
+    class _Extractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.partes: list[str] = []
+        def handle_data(self, data: str) -> None:
+            t = data.strip()
+            if t:
+                self.partes.append(t)
+
+    ext = _Extractor()
+    ext.feed(html)
+    return " ".join(ext.partes)
+
+
+def texto_anuncio(detalle: dict) -> str:
+    """Extrae el texto del primer anuncio del boletín oficial (BOR/BOE) si existe."""
+    anuncios = detalle.get("anuncios", [])
+    if not anuncios:
+        return ""
+    html = anuncios[0].get("texto", "") or ""
+    return _strip_html(html)
 
 
 def url_web(numero_convocatoria: str) -> str:
@@ -268,17 +294,21 @@ def obtener_candidatos(
                         notas=" | ".join(notas_partes) or None,
                     ))
                 else:
-                    # Sin PDF adjunto: construir texto desde los campos del API
+                    # Sin PDF: intentar texto del boletín oficial, si no metadata básica
                     if url_base in urls_vistas:
                         continue
                     urls_vistas.add(url_base)
-                    partes_texto = [conv["descripcion"]]
-                    if finalidad:
-                        partes_texto.append(finalidad)
-                    if beneficiarios:
-                        partes_texto.append(f"Beneficiarios: {beneficiarios}")
-                    if regiones:
-                        partes_texto.append(f"Ámbito territorial: {regiones}")
+                    texto_boletin = texto_anuncio(detalle)
+                    if texto_boletin:
+                        partes_texto = [texto_boletin]
+                    else:
+                        partes_texto = [conv["descripcion"]]
+                        if finalidad:
+                            partes_texto.append(finalidad)
+                        if beneficiarios:
+                            partes_texto.append(f"Beneficiarios: {beneficiarios}")
+                        if regiones:
+                            partes_texto.append(f"Ambito territorial: {regiones}")
                     candidatos.append(CandidatoFuente(
                         nombre=conv["descripcion"][:200],
                         ambito=ambito,
