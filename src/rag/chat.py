@@ -20,7 +20,7 @@ def normalizar_ascii(texto: str) -> str:
     texto = unicodedata.normalize("NFKD", texto.lower())
     return texto.encode("ascii", "ignore").decode("ascii")
 
-MODELO = "llama3.1:8b"
+MODELO = "llama3.2:latest"
 DISTANCIA_MAX = 0.82
 
 COMUNIDADES = {
@@ -122,6 +122,87 @@ def construir_ventana(bloques: list[str], indice: int, max_bloques: int = 4) -> 
     return " ".join(salida)
 
 
+_RE_CIFRA = re.compile(r"\d")
+_RE_EUROS = re.compile(r"\d[\d.,]*\s*(?:euros|eur|€)")
+_RE_PCT = re.compile(r"\d[\d.,]*\s*%")
+
+# Lineas que hablan del presupuesto/credito global de la convocatoria, no de la
+# cuantia que recibe el ciudadano. No deben colarse como "Importe".
+_PALABRAS_PRESUPUESTO = (
+    "importe total", "presupuest", "aplicacion presupuestaria", "credito disponible",
+    "millones de euros", "dotacion", "aprobar el gasto", "cargo a la aplicacion",
+    "gasto por importe", "credito total",
+)
+
+
+def _es_linea_presupuesto(normalizado: str) -> bool:
+    return any(p in normalizado for p in _PALABRAS_PRESUPUESTO)
+
+
+def _extraer_importe(bloques: list[str], limite: int = 3, max_chars: int = 650) -> list[str]:
+    """
+    Selecciona los bloques que contienen la cuantia real para el ciudadano.
+    A diferencia de la busqueda generica por palabra clave, aqui exigimos una
+    cifra (euros o %), descartamos lineas de presupuesto global (que en los PDF
+    de BDNS/BOE suelen aparecer antes que la cuantia individual) y priorizamos
+    los bloques mas cercanos a terminos de cuantia. Asi dejamos de capturar el
+    indice interno del documento o el credito total en vez del importe.
+
+    Exigimos ademas un score minimo: un bloque que solo contiene una cifra
+    incidental (un euro suelto en medio de prosa, sin termino de cuantia ni
+    "mensual") no entra. Asi evitamos pasar al LLM bloques que no son importes,
+    que es justo lo que hacia que un modelo pequeno se inventara un porcentaje
+    para rellenar el hueco. Mejor no dar importe que dar uno falso.
+    """
+    SCORE_MINIMO = 3
+    candidatos: list[tuple[int, int, str]] = []
+    for idx, bloque in enumerate(bloques):
+        n = normalizar_ascii(bloque)
+        if not _RE_CIFRA.search(n):
+            continue
+        if _es_linea_presupuesto(n):
+            continue
+        tiene_eur = bool(_RE_EUROS.search(n))
+        tiene_pct = bool(_RE_PCT.search(n))
+        if not (tiene_eur or tiene_pct):
+            continue
+        score = (2 if tiene_eur else 0) + (2 if tiene_pct else 0)
+        if any(
+            k in n
+            for k in (
+                "cuantia", "subvencion a percibir", "intensidad", "ayuda de",
+                "percibir", "importe minimo", "importe maximo", "importes minimos",
+                "subvencion de", "minimo", "maximo", "bono", "subvencionara",
+                "precio maximo", "hasta el",
+            )
+        ):
+            score += 2
+        if "mensual" in n:
+            score += 1
+        if score < SCORE_MINIMO:
+            continue
+        candidatos.append((score, idx, bloque))
+
+    if not candidatos:
+        return []
+
+    candidatos.sort(key=lambda c: (-c[0], c[1]))
+    elegidos: list[str] = []
+    vistos: set[str] = set()
+    for _, _, bloque in candidatos:
+        ventana = limpiar_texto(bloque)
+        clave = normalizar_ascii(ventana[:120])
+        if clave in vistos:
+            continue
+        if len(ventana) > max_chars:
+            ventana = ventana[:max_chars].rsplit(" ", 1)[0]
+        elegidos.append(ventana)
+        vistos.add(clave)
+        if len(elegidos) >= limite:
+            break
+    return elegidos
+
+
 def extraer_detalles_clave(texto_fuente: str, max_chars: int = 1900) -> str:
     """
     Extrae ventanas del texto completo que suelen contener los datos que el
@@ -134,7 +215,7 @@ def extraer_detalles_clave(texto_fuente: str, max_chars: int = 1900) -> str:
     grupos = [
         ("Beneficiarios", ["beneficiari", "destinatari", "personas que pueden"]),
         ("Requisitos", ["requisit", "deberan", "debera"]),
-        ("Importe", ["subvencion a percibir", "importes minimos", "intensidad de ayuda", "subvencion maxima", "cuantia", "importe", "euros", "%", "subvencionable"]),
+        ("Importe", None),  # se resuelve con _extraer_importe (requiere cifra real)
         ("Cubre", ["inversiones subvencionables", "gastos subvencionables", "seran subvencionables", "programa de inversion", "gastos de constitucion", "costes subvencionables"]),
         ("Plazo", ["plazo", "solicitudes finalizar", "presentacion de solicitudes"]),
         ("Solicitud", ["solicite esta ayuda", "sede electronica", "como solicitar"]),
@@ -143,7 +224,15 @@ def extraer_detalles_clave(texto_fuente: str, max_chars: int = 1900) -> str:
     seleccionados: list[str] = []
     vistos: set[str] = set()
     for nombre_grupo, claves in grupos:
-        max_por_grupo = 650 if nombre_grupo == "Importe" else 300
+        if nombre_grupo == "Importe":
+            for ventana in _extraer_importe(bloques):
+                clave_vista = normalizar_ascii(ventana[:180])
+                if clave_vista in vistos:
+                    continue
+                seleccionados.append(f"Importe: {ventana}")
+                vistos.add(clave_vista)
+            continue
+        max_por_grupo = 300
         encontrado = False
         for clave in claves:
             for i, bloque in enumerate(bloques):
@@ -209,6 +298,22 @@ def puntuar_resultado(resultado: dict, descripcion: str) -> float:
             puntuacion -= 0.08
             if termino in nombre:
                 puntuacion -= 0.06
+
+    # Intencion de inversion (comprar maquinaria, invertir, equipamiento): los
+    # programas de ADER cuyo nombre es "Inversiones por..." (INP pyme, MIN
+    # autonomos/empresas) son la respuesta directa, aunque el embedding los hunda
+    # por el boilerplate de cabecera comun a todas las fichas.
+    intencion_inversion = any(
+        t in consulta for t in ("maquinaria", "invertir", "inversion", "inversiones", "equipamiento")
+    )
+    if intencion_inversion and "inversion" in nombre:
+        puntuacion -= 0.18
+
+    # Desajuste de tamano: si el ciudadano se identifica como pyme o autonomo,
+    # una ayuda cuyo nombre es explicitamente para gran empresa encaja peor.
+    pide_pequeno = any(t in consulta for t in ("pyme", "autonom"))
+    if pide_pequeno and ("gran empresa" in nombre or "grandes empresas" in nombre):
+        puntuacion += 0.12
 
     if resultado.get("tipo_fuente") == "html":
         puntuacion -= 0.02
@@ -383,6 +488,9 @@ Reglas:
 - Copia literalmente importes, fechas, porcentajes y rangos de edad cuando aparezcan.
 - No reformules "igual o anterior", "igual o posterior", "entre X e Y" ni condiciones parecidas.
 - Si un dato no aparece claramente, escribe "No aparece en la fuente proporcionada".
+- NUNCA inventes, estimes ni redondees un importe o porcentaje. Si en los datos de una
+  convocatoria no hay ninguna cifra de importe, en su campo Importe escribe exactamente
+  "No aparece en la fuente proporcionada". Es preferible no dar importe que dar uno falso.
 - {instruccion_leyes}
 
 Termina con: "Información orientativa. Consulta la convocatoria oficial antes de solicitar."
@@ -401,7 +509,10 @@ Termina con: "Información orientativa. Consulta la convocatoria oficial antes d
                 {"role": "system", "content": SISTEMA_RESPUESTA},
                 {"role": "user", "content": prompt},
             ],
-            options={"temperature": 0},
+            # temperature 0 = deterministico (no inventar cifras).
+            # num_predict acota la respuesta y evita generaciones desbocadas
+            # (vistas de >10 min en CPU); num_ctx fija la ventana de contexto.
+            options={"temperature": 0, "num_predict": 1024, "num_ctx": 4096},
         )
         return prefijo + cierre_unico(respuesta.message.content)
     except Exception:
@@ -430,7 +541,7 @@ def chat() -> None:
             pregunta=perfil["descripcion"],
             comunidad=perfil["comunidad"],
             categoria=perfil["categoria"],
-            k=20,
+            k=30,
         )
 
         if not resultados and perfil["categoria"] != "todas":
@@ -439,7 +550,7 @@ def chat() -> None:
                 pregunta=perfil["descripcion"],
                 comunidad="todas",
                 categoria=perfil["categoria"],
-                k=20,
+                k=30,
             )
 
         if not resultados and perfil["comunidad"] != "todas":
@@ -448,7 +559,7 @@ def chat() -> None:
                 pregunta=perfil["descripcion"],
                 comunidad=perfil["comunidad"],
                 categoria="todas",
-                k=20,
+                k=30,
             )
 
         if not resultados:
@@ -457,7 +568,7 @@ def chat() -> None:
                 pregunta=perfil["descripcion"],
                 comunidad="todas",
                 categoria="todas",
-                k=20,
+                k=30,
             )
 
         print("=" * 60)

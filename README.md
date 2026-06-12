@@ -20,7 +20,7 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 | Postgres + pgvector en Docker | ✅ Tablas `fuentes` y `fragmentos` (vector dim 384) |
 | Indexar PDFs (`src/indexar.py`) | ✅ 68 PDFs indexados (1120 fragmentos) |
 | Búsqueda semántica (`src/rag/buscar.py`) | ✅ Coseno con pgvector |
-| Respuesta con LLM (`src/rag/chat.py`) | ✅ Ollama + llama3.1:8b citando fuentes y detalles clave |
+| Respuesta con LLM (`src/rag/chat.py`) | ✅ Ollama + llama3.2 (3B) citando fuentes y detalles clave; tope de tokens y blindaje anti-invención |
 | Interfaz web (`src/api.py` + `src/static/index.html`) | ✅ FastAPI + chat. Arrancar: `python src/api.py` |
 | Widget embebible (`src/static/widget.html` + `src/static/embed.js`) | 🧪 MVP técnico; pendiente de validar |
 | Ingesta multi-fuente (`src/ingesta/`) | ✅ Pipeline JSONL + adaptadores PDF/HTML/bdns_api |
@@ -212,7 +212,9 @@ asistente-ayudas/
 - Python 3.11 + `venv`
 - PostgreSQL 16 + pgvector (Docker)
 - Embeddings locales: `sentence-transformers` — modelo `paraphrase-multilingual-MiniLM-L12-v2` (dim 384, multilingüe)
-- LLM para respuestas: Ollama local, modelo `llama3.1:8b` (sin coste, sin API externa)
+- LLM para respuestas: Ollama local, modelo `llama3.2:latest` (3B) por defecto — ~5,8× más
+  rápido que `llama3.1:8b` en CPU y con la misma precisión en cuantías para esta tarea de
+  extracción. Sin coste, sin API externa. (`llama3.1:8b` sigue disponible si se prioriza calidad.)
 
 ---
 
@@ -285,15 +287,93 @@ Instruccion para continuar en Claude Code: antes de tocar ranking, prompt o extr
 `python src/evaluar_rag.py --sin-llm`; despues de cada ajuste, repetir el mismo comando y comparar
 el ultimo informe. Ejecutar el modo completo con LLM solo en los casos que ya tengan buen ranking.
 
-Baseline local del 2026-06-12 con `python src/evaluar_rag.py --sin-llm`:
+Baseline local del 2026-06-12 con `python src/evaluar_rag.py --sin-llm` (k por defecto = 30):
 
 - `autonomo_larioja`: 3/3 esperadas, correcto.
 - `comercio_minorista`: 1/1 esperadas, correcto.
 - `vivienda_joven`: 2/2 esperadas, correcto.
+- `pyme_maquinaria`: 2/2 esperadas, correcto (antes 0/2; ver mejora de ranking abajo).
 - `digitalizacion_empresa`: 1/2 esperadas; falta subir mejor `Digitalizacion e Industria`.
 - `carnet_conducir`: 1/2 esperadas; caso de cobertura incompleta para IRJ/Gobierno La Rioja.
-- `pyme_maquinaria`: 0/2 esperadas; siguiente objetivo de ranking ADER/activos.
 - `emprender_logrono`: 0/1 esperadas; falta conector local Logroño o ajustar fallback a ADER.
+
+Mejora de ranking `pyme_maquinaria` (2026-06-12, sin reindexar la base):
+
+- Diagnóstico: las dos ayudas correctas (`Inversiones por pymes` = INP, `Inversiones por
+  autónomos y empresas` = MIN) existen como fichas HTML de ADER, pero el embedding las hundía
+  a las posiciones 17 y 27 por distancia. La cabecera de navegación común a todas las fichas
+  ADER ensucia el primer fragmento semántico, así que ayudas industriales genéricas
+  (`Gran empresa industrial`, que además es para *grandes* empresas, no pymes) las superaban.
+- Cambios en `src/rag/chat.py` (`puntuar_resultado`), conceptuales y gateados para no tocar
+  los casos buenos:
+  1. **Intención de inversión**: si la consulta menciona maquinaria/invertir/inversión/equipamiento,
+     se prioriza la ayuda cuyo nombre es un programa de inversión (`Inversiones por...`).
+  2. **Desajuste de tamaño**: si el ciudadano se identifica como pyme/autónomo, se penaliza
+     la ayuda cuyo nombre es explícitamente para *gran empresa*.
+- Cambio de recuperación: `k` por defecto de 20 → 30 en `evaluar_rag.py` y en `chat.py`. Con
+  k=20 la ficha `Inversiones por pymes` (posición 27 por distancia) ni se recuperaba; el
+  re-ranking solo reordena lo ya recuperado. Filosofía: recuperar más ancho, re-rankear preciso.
+- Verificación: `python src/evaluar_rag.py --sin-llm` deja `pyme_maquinaria` en 2/2 sin romper
+  `autonomo_larioja` (3/3), `comercio_minorista` (1/1) ni `vivienda_joven` (2/2).
+
+### Iteración de precisión en cuantías y latencia (2026-06-12, sin reindexar)
+
+Batería de 13 frases coloquiales con LLM (`llama3.1:8b`) auditando dónde se pierden los
+importes: fuente real → extracto enviado al LLM → respuesta final. Hallazgos y arreglos:
+
+- **Bug del extractor de importes en PDFs** (`extraer_detalles_clave` en `src/rag/chat.py`).
+  El extractor estaba afinado para la estructura limpia de las fichas HTML de ADER. En PDFs
+  de BDNS/BOE hacía match con el **índice interno** del documento (líneas tipo "...cuantía de
+  la ayuda, plazo de concesión...", sin ninguna cifra) o con el **presupuesto/crédito total**
+  ("importe total de seis millones de euros"), en lugar de la cuantía al ciudadano. Resultado:
+  el Bono Alquiler Joven 2026 llegaba al LLM con **cero importes** pese a que el PDF dice
+  "ayuda de 250 euros mensuales".
+  - Arreglo: nuevo `_extraer_importe()` que para la sección Importe **exige una cifra real**
+    (euros o %), **descarta líneas de presupuesto global** y prioriza por cercanía a términos
+    de cuantía, devolviendo los 2 mejores bloques. Ahora el Bono Alquiler extrae
+    "250 euros mensuales"; ADER (2.700 €, 20.000–1.500.000 €, 25%/35%) y carnet Extremadura
+    (400/1.300/1.500 €) se mantienen.
+- **Generaciones desbocadas del LLM**: dos frases tardaron 711 s y 1.112 s (>18 min) y
+  acababan en respuesta vacía de fallback. Se añadió `num_predict=1024` y `num_ctx=4096` a
+  las opciones de Ollama: acota la respuesta, evita runaways y baja latencia. Tras el cambio,
+  esas mismas frases responden en ~100 s con sus importes.
+- **Latencia (cuello de botella = generación LLM en CPU, no el retrieval)**:
+  - retrieval: media 0,48 s (rápido).
+  - `llama3.1:8b`: ~60–135 s por respuesta.
+  - `llama3.2:latest` (3B): **~23 s** en la misma frase (~5,8× más rápido) y sigue citando
+    "2.700 euros" correctamente. Candidato a modelo por defecto si se prioriza UX; pendiente
+    de validar calidad en más casos antes de cambiarlo.
+- **Pérdida de datos ANTES del embedding (calidad de PDF)**: algunos PDFs (emancipación
+  juvenil, Becas Culturex) salen de `pypdf` con **palabras pegadas** o **sin símbolo de
+  moneda**, o solo contienen el presupuesto global. Ahí no hay cuantía individual que extraer;
+  el arreglo real es mejorar la extracción de texto (OCR/espaciado) y reindexar — tarea aparte.
+
+### Adopción de llama3.2 (3B) + blindaje anti-invención (2026-06-12)
+
+Tras validar latencia, se cambió el modelo por defecto a `llama3.2:latest`. Latencia/respuesta
+en CPU bajó de ~60–135 s (8B) a ~6–18 s (3B). **Por qué es seguro escalar:** la latencia es
+del MODELO, no de la base. El retrieval (lo único que crece con la BD) es ~0,5 s y se mantiene
+con un índice HNSW cuando haya decenas de miles de fragmentos; el LLM solo ve las top-3 ayudas,
+nunca la BD entera, así que su tiempo es constante aunque la BD crezca.
+
+El 3B es más propenso a **inventar cifras** cuando el contexto de Importe llega vacío o con
+ruido. Se detectó y corrigió:
+
+- `_extraer_importe` (en `src/rag/chat.py`) exige ahora un **score mínimo** (cifra real +
+  término de cuantía), descarta presupuesto global y emite hasta **3** tramos. Se corrigió una
+  clave que no casaba (`"intensidad de ayuda"` no encontraba `"intensidad de la ayuda"`), que
+  dejaba sin importe al `Cheque de innovación digitalización` y provocaba que el 3B inventara
+  un `75%`.
+- El prompt prohíbe explícitamente inventar/estimar importes: si no hay cifra textual, el campo
+  Importe debe decir "No aparece en la fuente proporcionada".
+- Resultado validado (6 frases con `llama3.2`): cuantías correctas y **literales** en Bono
+  Alquiler (250 €, límite 600 €), Consolidación Autónomo (2.700/2.700/2.100 €), Inversiones
+  pyme (70 €/m²), Comercio COC (25%/35%), Cheque digitalización (50%/70%) y carnet Extremadura
+  (400/1.300/1.500 €). En las fuentes sin cuantía individual, el modelo **se abstiene** en vez
+  de inventar (era el fallo crítico: antes inventaba un `85%` inexistente).
+
+- Verificación end-to-end: ver `data/evaluaciones/` (informes ignorados por git). La batería
+  de ranking `--sin-llm` sigue sin regresiones.
 
 ## Descubrir y añadir convocatorias desde la BDNS
 

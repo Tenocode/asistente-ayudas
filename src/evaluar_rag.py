@@ -292,7 +292,7 @@ def main() -> None:
         description="Ejecuta una bateria reproducible de evaluacion RAG."
     )
     parser.add_argument("--sin-llm", action="store_true", help="Evalua ranking/extractos sin llamar a Ollama.")
-    parser.add_argument("--k", type=int, default=20, help="Fragmentos iniciales por busqueda.")
+    parser.add_argument("--k", type=int, default=30, help="Fragmentos iniciales por busqueda.")
     parser.add_argument("--caso", nargs="+", help="IDs concretos de casos a ejecutar.")
     parser.add_argument("--max-casos", type=int, help="Limita el numero de casos.")
     parser.add_argument(
