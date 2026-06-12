@@ -30,9 +30,9 @@ def buscar(pregunta: str, k: int = TOP_K) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT fuentes.nombre, fuentes.ambito, fuentes.categoria,
+                SELECT fuentes.id, fuentes.nombre, fuentes.ambito, fuentes.categoria,
                        fuentes.url_oficial, fuentes.tipo_fuente,
-                       fragmentos.texto,
+                       fragmentos.numero_fragmento, fragmentos.texto,
                        fragmentos.embedding <=> %s::vector AS distancia
                 FROM fragmentos
                 JOIN fuentes ON fuentes.id = fragmentos.fuente_id
@@ -45,13 +45,15 @@ def buscar(pregunta: str, k: int = TOP_K) -> list[dict]:
 
     return [
         {
-            "nombre": fila[0],
-            "ambito": fila[1],
-            "categoria": fila[2],
-            "url_oficial": fila[3],
-            "tipo_fuente": fila[4],
-            "texto": fila[5],
-            "distancia": round(fila[6], 4),
+            "fuente_id": fila[0],
+            "nombre": fila[1],
+            "ambito": fila[2],
+            "categoria": fila[3],
+            "url_oficial": fila[4],
+            "tipo_fuente": fila[5],
+            "numero_fragmento": fila[6],
+            "texto": fila[7],
+            "distancia": round(fila[8], 4),
         }
         for fila in filas
     ]
@@ -81,9 +83,9 @@ def buscar_filtrado(
     params.append(k)
 
     sql = f"""
-        SELECT fuentes.nombre, fuentes.ambito, fuentes.categoria,
+        SELECT fuentes.id, fuentes.nombre, fuentes.ambito, fuentes.categoria,
                fuentes.url_oficial, fuentes.tipo_fuente,
-               fragmentos.texto,
+               fragmentos.numero_fragmento, fragmentos.texto,
                fragmentos.embedding <=> %s::vector AS distancia
         FROM fragmentos
         JOIN fuentes ON fuentes.id = fragmentos.fuente_id
@@ -99,16 +101,37 @@ def buscar_filtrado(
 
     return [
         {
-            "nombre": fila[0],
-            "ambito": fila[1],
-            "categoria": fila[2],
-            "url_oficial": fila[3],
-            "tipo_fuente": fila[4],
-            "texto": fila[5],
-            "distancia": round(fila[6], 4),
+            "fuente_id": fila[0],
+            "nombre": fila[1],
+            "ambito": fila[2],
+            "categoria": fila[3],
+            "url_oficial": fila[4],
+            "tipo_fuente": fila[5],
+            "numero_fragmento": fila[6],
+            "texto": fila[7],
+            "distancia": round(fila[8], 4),
         }
         for fila in filas
     ]
+
+
+def obtener_textos_fuentes(fuente_ids: list[int]) -> dict[int, str]:
+    if not fuente_ids:
+        return {}
+
+    with psycopg2.connect(DSN) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, texto_extraido
+                FROM fuentes
+                WHERE id = ANY(%s)
+                """,
+                (fuente_ids,),
+            )
+            filas = cur.fetchall()
+
+    return {fila[0]: fila[1] for fila in filas}
 
 
 def main() -> None:

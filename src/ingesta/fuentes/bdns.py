@@ -50,13 +50,18 @@ PAUSA = 0.3  # segundos entre peticiones para no saturar el servidor
 # Palabras clave de búsqueda para cada categoría del sistema.
 # La BDNS no tiene categorías propias, así que buscamos por términos.
 BUSQUEDAS = {
-    "vivienda":    ["alquiler joven", "bono alquiler", "vivienda rehabilitacion",
+    "vivienda":    ["alquiler joven", "bono alquiler", "bono alquiler joven",
+                    "vivienda joven", "aval vivienda", "compra vivienda joven",
+                    "vivienda rehabilitacion", "rehabilitacion vivienda",
                     "plan vivienda", "ayuda alquiler"],
-    "carnet":      ["carnet conducir", "permiso conducir B", "autoescuela"],
+    "carnet":      ["carnet conducir", "carne conducir", "permiso conducir",
+                    "permiso conducir B", "autoescuela", "ayuda autoescuela"],
     "formacion":   ["becas educacion", "becas universitarias", "beca fp",
                     "formacion profesional beca", "estudios superiores"],
     "empleo":      ["empleo joven", "primer empleo", "autonomo alta",
-                    "emprendimiento joven", "garantia juvenil"],
+                    "autonomos", "emprendedores", "emprendimiento",
+                    "pymes", "empresa", "comercio", "inversion empresarial",
+                    "digitalizacion empresas", "garantia juvenil"],
     "movilidad":   ["erasmus", "movilidad internacional becas", "practicas europeas"],
     "cultura":     ["ayudas cultura", "artes escenicas", "patrimonio cultural"],
     "dependencia": ["dependencia cuidadores", "discapacidad ayudas", "atencion mayores"],

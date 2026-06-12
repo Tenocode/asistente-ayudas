@@ -161,18 +161,18 @@ def chat(req: ChatRequest):
         }
 
         resultados = buscar_filtrado(
-            descripcion, comunidad=perfil["comunidad"], categoria=perfil["categoria"], k=8
+            descripcion, comunidad=perfil["comunidad"], categoria=perfil["categoria"], k=20
         )
         if not resultados and perfil["categoria"] != "todas":
             resultados = buscar_filtrado(
-                descripcion, comunidad="todas", categoria=perfil["categoria"], k=8
+                descripcion, comunidad="todas", categoria=perfil["categoria"], k=20
             )
         if not resultados and perfil["comunidad"] != "todas":
             resultados = buscar_filtrado(
-                descripcion, comunidad=perfil["comunidad"], categoria="todas", k=8
+                descripcion, comunidad=perfil["comunidad"], categoria="todas", k=20
             )
         if not resultados:
-            resultados = buscar_filtrado(descripcion, comunidad="todas", categoria="todas", k=8)
+            resultados = buscar_filtrado(descripcion, comunidad="todas", categoria="todas", k=20)
 
         respuesta_llm = generar_respuesta(perfil, resultados)
         respuesta = respuesta_llm + "\n\n---\n¿Quieres buscar otro tipo de ayuda? Escribe 'sí' para empezar de nuevo."

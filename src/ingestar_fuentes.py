@@ -4,10 +4,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from ingesta.pipeline import extraer_candidatos, leer_candidatos
+from ingesta.pipeline import extraer_candidato, leer_candidatos
 from ingesta.indexar_fuente import indexar_fuente
 
 RUTA_CANDIDATOS = Path(__file__).parent.parent / "data" / "candidatos.jsonl"
+MIN_PALABRAS = 80
 
 
 def main() -> None:
@@ -25,6 +26,12 @@ def main() -> None:
         action="store_true",
         help="Insertar en Postgres tras extraer. Sin este flag solo muestra el texto.",
     )
+    parser.add_argument(
+        "--min-palabras",
+        type=int,
+        default=MIN_PALABRAS,
+        help="Minimo de palabras extraidas para aceptar una fuente.",
+    )
     args = parser.parse_args()
 
     if not args.candidatos.exists():
@@ -38,16 +45,31 @@ def main() -> None:
         return
 
     print(f"Extrayendo {len(candidatos)} fuente(s)...\n")
-    fuentes = extraer_candidatos(candidatos)
+    extraidas = saltadas = indexadas = ya_existian = errores = 0
 
-    indexadas = ya_existian = errores = 0
+    for candidato in candidatos:
+        try:
+            fuente = extraer_candidato(candidato)
+        except Exception as e:
+            print(f"[ERROR] {candidato.nombre}")
+            print(f"        url={candidato.url_oficial}")
+            print(f"        {e}\n")
+            errores += 1
+            continue
 
-    for fuente in fuentes:
         palabras = len(fuente.texto_extraido.split())
         print(f"[OK] {fuente.nombre}")
         print(f"     tipo={fuente.tipo_fuente}  ambito={fuente.ambito}  categoria={fuente.categoria}")
         print(f"     url={fuente.url_oficial}")
         print(f"     texto extraido: {palabras} palabras")
+
+        if palabras < args.min_palabras:
+            print(f"     [SKIP] Texto insuficiente (< {args.min_palabras} palabras).")
+            saltadas += 1
+            print()
+            continue
+
+        extraidas += 1
 
         if args.indexar:
             try:
@@ -63,8 +85,12 @@ def main() -> None:
                 errores += 1
         print()
 
+    print(
+        f"Resumen: {extraidas} aceptadas, {saltadas} saltadas, "
+        f"{errores} errores."
+    )
     if args.indexar:
-        print(f"Resumen: {indexadas} indexadas, {ya_existian} ya existian, {errores} errores.")
+        print(f"Indexacion: {indexadas} indexadas, {ya_existian} ya existian.")
 
 
 if __name__ == "__main__":

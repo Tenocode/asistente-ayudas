@@ -20,14 +20,18 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 | Postgres + pgvector en Docker | ✅ Tablas `fuentes` y `fragmentos` (vector dim 384) |
 | Indexar PDFs (`src/indexar.py`) | ✅ 68 PDFs indexados (1120 fragmentos) |
 | Búsqueda semántica (`src/rag/buscar.py`) | ✅ Coseno con pgvector |
-| Respuesta con LLM (`src/rag/chat.py`) | ✅ Ollama + llama3.1:8b citando fuentes |
+| Respuesta con LLM (`src/rag/chat.py`) | ✅ Ollama + llama3.1:8b citando fuentes y detalles clave |
 | Interfaz web (`src/api.py` + `src/static/index.html`) | ✅ FastAPI + chat. Arrancar: `python src/api.py` |
 | Widget embebible (`src/static/widget.html` + `src/static/embed.js`) | 🧪 MVP técnico; pendiente de validar |
 | Ingesta multi-fuente (`src/ingesta/`) | ✅ Pipeline JSONL + adaptadores PDF/HTML/bdns_api |
 | **BDNS API** (`src/ingesta/fuentes/bdns.py`) | ✅ Descubrimiento automatico de convocatorias |
+| **ADER** (`src/ingesta/fuentes/ader.py`) | ✅ Descubridor inicial de ayudas de negocio/empresa en La Rioja |
+| Evaluacion RAG (`src/evaluar_rag.py`) | ✅ Bateria reproducible de preguntas, ranking y respuestas |
 | Pipeline de actualización completo | 🔄 En curso (Fase 5) |
 
-Datos actuales: **77 fuentes** (68 PDF + 9 BDNS API), **1130 fragmentos**.
+Datos locales comprobados el 2026-06-12: **76 fuentes** y **1238 fragmentos** en Postgres,
+todas con `tipo_fuente='pdf'`. El conector BDNS ya descubre candidatos y descarga documentos,
+pero esos candidatos no tienen por qué estar indexados todavía en la base local.
 Categorías: formacion, empleo, movilidad, cultura, vivienda, dependencia, carnet.
 Ámbitos: estatal (56), larioja (15), extremadura (2), andalucia (1), castillaleon (1), murcia (1).
 
@@ -39,10 +43,42 @@ El descubrimiento automático de convocatorias vía BDNS ya funciona. Lo que fal
 
 - Marcar convocatorias con plazo vencido como cerradas
 - Programar el script BDNS para que se ejecute periódicamente (semanal/mensual)
+- Consolidar conectores por fuente oficial: ADER primero, despues IRJ, Gobierno de La Rioja
+  y Logroño
 - Fuentes no cubiertas por BDNS: Gobierno de La Rioja (carnet conducir, emancipación juvenil)
   requieren scraping directo de su portal de subvenciones
+- Cobertura La Rioja: el conector BDNS ya busca términos ampliados de vivienda, carnet,
+  autónomos, empresas, comercio, pymes y emprendimiento. En el chat, esas consultas se
+  agrupan provisionalmente bajo la categoría `empleo`.
 
 Modelo de embeddings: `paraphrase-multilingual-MiniLM-L12-v2` (dim 384, multilingüe).
+
+---
+
+## Mapa de fuentes para cubrir La Rioja
+
+Objetivo: cubrir La Rioja completa antes de escalar comunidad por comunidad. El orden de
+prioridad de fuentes debe ser:
+
+1. **BDNS / SNPSAP**: fuente transversal para convocatorias registradas por administraciones
+   públicas. Sirve para descubrir ayudas estatales, autonómicas y locales, y muchas veces
+   expone documentos descargables por API.
+   - API/docs: `https://www.infosubvenciones.es/bdnstrans/doc/swagger`
+   - Portal: `https://www.infosubvenciones.es/bdnstrans/GE/es/index`
+2. **Gobierno de La Rioja / Oficina electrónica**: trámites y solicitudes oficiales.
+   - `https://web.larioja.org/oficina-electronica/`
+3. **Boletín Oficial de La Rioja (BOR)**: extractos, bases y convocatorias oficiales.
+   - `https://web.larioja.org/bor`
+4. **Instituto Riojano de la Juventud (IRJ)**: juventud, emancipación, carnet, formación.
+   - `https://www.irj.es/subvenciones`
+5. **ADER**: empresas, autónomos, emprendedores, comercio, innovación e inversión.
+   - `https://www.ader.es/ayudas/`
+6. **Ayuntamiento de Logroño**: subvenciones municipales por áreas.
+   - `https://logrono.es/subvenciones`
+   - `https://logrono.es/becas-y-subvenciones`
+
+Estrategia: BDNS primero para barrido automático; conectores específicos después para fuentes
+que BDNS no cubra bien o para enriquecer datos con páginas oficiales más claras.
 
 ---
 
@@ -58,6 +94,21 @@ mismo objetivo: convertir fuentes oficiales en fragmentos trazables para el RAG.
 
 La regla de calidad se mantiene: no se indexa una ayuda si no tiene fuente oficial, URL
 verificable y texto/evidencia suficiente para justificar la respuesta.
+
+### ¿Hay que tener todos los PDFs descargados?
+
+No necesariamente. Para que el RAG responda, basta con guardar en Postgres:
+
+- `url_oficial`;
+- `tipo_fuente`;
+- `texto_extraido`;
+- `fragmentos`;
+- `embedding`.
+
+Los PDFs locales son útiles como caché y auditoría, pero no son obligatorios si el sistema
+puede volver a descargar la fuente oficial. A futuro conviene añadir una caché controlada
+(`data/cache/fuentes/`) con hash del archivo, fecha de descarga y URL, para poder reindexar
+sin depender siempre de la red.
 
 Primer paso completado: la base ya separa `fuentes` de `fragmentos`. Cada PDF genera una
 fila en `fuentes` con sus metadatos y URL oficial, y sus trozos quedan enlazados desde
@@ -75,6 +126,13 @@ fuentes candidatas antes de indexarlas. Soporta:
 
 El formato de candidato es deliberadamente pequeño: el investigador humano o IA propone
 URLs oficiales, y el sistema extrae el texto real desde esas URLs antes de aceptarlas.
+
+Tercer paso completado: se añadio `src/ingesta/fuentes/ader.py` como primer conector
+especifico por fuente oficial. ADER no indexa directamente; descubre paginas oficiales de
+ayudas para empresas, autonomos, comercio y emprendedores, genera `data/candidatos_ader.jsonl`,
+y despues el importador comun decide si la pagina tiene texto suficiente para entrar al RAG.
+Esta separacion es importante: cada fuente sabe descubrir sus URLs, pero la validacion,
+extraccion, deduplicacion e indexado siguen centralizados.
 
 ---
 
@@ -109,9 +167,12 @@ Ejemplo de inserción futura:
 asistente-ayudas/
   data/
     convocatorias/        # PDFs de convocatorias descargados
+    evaluaciones/         # informes locales de evaluar_rag.py (ignorado por git)
     urls.txt              # formato: nombre | ámbito | categoría | url
-    candidatos.jsonl      # fuentes candidatas manuales (PDF/HTML por URL)
-    candidatos_bdns.jsonl # salida del conector BDNS (generado, no se sube al repo)
+    candidatos.example.jsonl # ejemplo versionado de candidato manual
+    candidatos.jsonl      # cola local de fuentes candidatas (ignorado por git)
+    candidatos_bdns.jsonl # salida local del conector BDNS (ignorado por git)
+    candidatos_ader.jsonl # salida local del conector ADER (ignorado por git)
   src/
     db/
       init_db.py          # crea tablas `fuentes` + `fragmentos` (DROP + CREATE)
@@ -125,6 +186,7 @@ asistente-ayudas/
         html.py           # extractor HTML/web por URL
       fuentes/
         bdns.py           # conector BDNS: busca, filtra y genera candidatos_bdns.jsonl
+        ader.py           # conector ADER: descubre paginas oficiales de ayudas ADER
     rag/
       buscar.py           # búsqueda semántica con pgvector + JOIN a fuentes
       chat.py             # perfilado de usuario + generación de respuesta LLM
@@ -134,6 +196,7 @@ asistente-ayudas/
       embed.js            # script de inserción del widget
     api.py                # servidor FastAPI + web + widget
     descargar.py          # CLI: descarga PDFs desde urls.txt
+    evaluar_rag.py        # CLI: bateria de evaluacion RAG reproducible
     indexar.py            # CLI: trocea + embeddings + inserta todos los PDFs
     ingestar_fuentes.py   # CLI: extrae e indexa candidatos de candidatos.jsonl
   docker-compose.yml      # Postgres 16 + pgvector
@@ -182,6 +245,56 @@ python src/indexar.py   # trocea, genera embeddings e inserta en Postgres
 python src/api.py
 ```
 
+## Evaluar el RAG sin probar a mano
+
+Se añadio `src/evaluar_rag.py` para automatizar el ciclo de evaluacion:
+pregunta real -> recuperacion semantica -> re-ranking/deduplicado -> extractos clave -> respuesta
+LLM opcional -> informe Markdown.
+
+Uso rapido para revisar ranking, fuentes y extractos sin esperar a Ollama:
+
+```powershell
+python src/evaluar_rag.py --sin-llm
+```
+
+Uso completo, generando tambien respuestas con `llama3.1:8b`:
+
+```powershell
+python src/evaluar_rag.py
+```
+
+Iteracion sobre un caso concreto:
+
+```powershell
+python src/evaluar_rag.py --caso autonomo_larioja
+python src/evaluar_rag.py --caso autonomo_larioja --sin-llm
+```
+
+Los informes se guardan en `data/evaluaciones/eval_YYYYMMDD_HHMMSS.md` y estan ignorados
+por git. Casos iniciales incluidos:
+
+- `autonomo_larioja`
+- `pyme_maquinaria`
+- `comercio_minorista`
+- `digitalizacion_empresa`
+- `emprender_logrono`
+- `vivienda_joven`
+- `carnet_conducir`
+
+Instruccion para continuar en Claude Code: antes de tocar ranking, prompt o extractores, ejecutar
+`python src/evaluar_rag.py --sin-llm`; despues de cada ajuste, repetir el mismo comando y comparar
+el ultimo informe. Ejecutar el modo completo con LLM solo en los casos que ya tengan buen ranking.
+
+Baseline local del 2026-06-12 con `python src/evaluar_rag.py --sin-llm`:
+
+- `autonomo_larioja`: 3/3 esperadas, correcto.
+- `comercio_minorista`: 1/1 esperadas, correcto.
+- `vivienda_joven`: 2/2 esperadas, correcto.
+- `digitalizacion_empresa`: 1/2 esperadas; falta subir mejor `Digitalizacion e Industria`.
+- `carnet_conducir`: 1/2 esperadas; caso de cobertura incompleta para IRJ/Gobierno La Rioja.
+- `pyme_maquinaria`: 0/2 esperadas; siguiente objetivo de ranking ADER/activos.
+- `emprender_logrono`: 0/1 esperadas; falta conector local Logroño o ajustar fallback a ADER.
+
 ## Descubrir y añadir convocatorias desde la BDNS
 
 La BDNS (Base de Datos Nacional de Subvenciones) tiene más de 600.000 convocatorias
@@ -194,6 +307,9 @@ python src/ingesta/fuentes/bdns.py --desde 2025-01-01 --ambito estatal larioja
 
 # Sólo vivienda y carnet de La Rioja
 python src/ingesta/fuentes/bdns.py --desde 2025-01-01 --ambito larioja --categorias vivienda carnet
+
+# Barrido más útil para negocio/emprendimiento en La Rioja
+python src/ingesta/fuentes/bdns.py --desde 2025-01-01 --ambito larioja --categorias empleo --max 100
 ```
 
 Luego indexa los resultados (la deduplicación es automática):
@@ -201,6 +317,91 @@ Luego indexa los resultados (la deduplicación es automática):
 ```powershell
 python src/ingestar_fuentes.py --candidatos data/candidatos_bdns.jsonl --indexar
 ```
+
+El importador valida calidad mínima antes de indexar: procesa candidato a candidato, no aborta
+toda la tanda si una fuente falla, y salta documentos con texto extraído insuficiente. Por defecto
+exige 80 palabras; se puede ajustar:
+
+```powershell
+python src/ingestar_fuentes.py --candidatos data/candidatos_bdns.jsonl --indexar --min-palabras 120
+```
+
+Nota operativa: para barridos autonómicos, `--max 5` suele ser demasiado bajo. En pruebas,
+La Rioja no aparecía en empleo/empresa con `--max 5`, pero sí aparecieron ayudas ADER y
+emprendimiento con `--max 100`.
+
+## Descubrir ayudas desde ADER
+
+ADER es fuente oficial para ayudas de empresas, autonomos, comercio, emprendedores,
+innovacion, financiacion e inversion en La Rioja. El conector ADER rastrea paginas oficiales
+de `www.ader.es/ayudas/ayudas-por-areas/` y genera candidatos HTML:
+
+```powershell
+# Todas las areas ADER detectadas
+python src/ingesta/fuentes/ader.py
+
+# Solo areas concretas de negocio
+python src/ingesta/fuentes/ader.py --areas autonomos emprendedores comercio
+```
+
+Primero conviene probar extraccion sin indexar:
+
+```powershell
+python src/ingestar_fuentes.py --candidatos data/candidatos_ader.jsonl
+```
+
+Y, si el texto extraido es correcto, indexar:
+
+```powershell
+python src/ingestar_fuentes.py --candidatos data/candidatos_ader.jsonl --indexar
+```
+
+Decision actual: ADER se guarda como `tipo_fuente="html"` porque sus fichas oficiales ya
+incluyen plazo, normativa, beneficiarios, requisitos, tramite y enlaces a PDF/BDNS cuando
+existen. Los PDFs enlazados pueden anadirse despues como enriquecimiento, pero no bloquean
+la ingesta inicial. Cuando una ficha ADER usa un titulo generico, el conector conserva el
+nombre mas concreto del enlace oficial que llevo hasta esa ficha. Tambien normaliza URLs
+de ADER eliminando parametros de seguimiento para evitar duplicados de la misma ayuda, y
+normaliza texto para detectar marcadores aunque la web use tildes o variantes.
+
+Validacion local del 2026-06-12: el barrido completo de ADER genero 28 candidatos unicos en
+`data/candidatos_ader.jsonl`; `ingestar_fuentes.py --min-palabras 80` acepto los 28, con
+0 saltadas y 0 errores. Todavia no se han indexado en Postgres para no modificar la base
+sin una decision explicita.
+
+Tras indexar ADER, una prueba de chat encontro ayudas correctas pero respondio flojo en
+plazo/importe porque solo se enviaban 600 caracteres del fragmento semantico al LLM. Se ajusto
+`src/rag/buscar.py` para devolver `fuente_id` y recuperar `texto_extraido`, y `src/rag/chat.py`
+para enriquecer cada ayuda con extractos clave del texto completo: beneficiarios, requisitos,
+importe/subvencion, plazo y solicitud. Esos extractos se balancean por seccion para que una
+seccion larga no tape datos de importe o plazo, y se evita tomar como contenido el indice interno
+de las fichas ADER cuando solo enumera encabezados. Si un bloque ya usado coincide con otra seccion,
+el extractor sigue buscando para no perder la seccion real de importes o plazos. En cada seccion
+se priorizan encabezados fuertes antes que palabras sueltas como `euros`. Tambien se anadio
+un re-ranking ligero para que consultas
+con terminos concretos como `autonomo`, `pyme`, `comercio` o `emprendimiento` suban ayudas cuyo
+nombre o texto contiene esos terminos.
+
+Validacion posterior: con la consulta `Soy autonomo en La Rioja, que ayudas puedo pedir?`, el
+ranking sube `Consolidacion del Trabajo Autonomo Riojano` al primer puesto y el LLM ya responde
+con cuantias `2.700 euros` / `2.100 euros` y plazo `14 de mayo de 2026`.
+
+Segunda validacion web: la respuesta ya daba bien la primera ayuda, pero repetia la misma ayuda
+desde BDNS/PDF y metia `Incentivos regionales` antes de una ayuda mas directa para autonomos.
+Se aumento la recuperacion inicial de `k=8` a `k=20` antes del re-ranking, se anadio deduplicado
+conceptual entre ficha HTML y PDF oficial, y ante duplicados se prefiere la ficha HTML porque suele
+ser mas clara para responder a ciudadanos.
+
+Tercer ajuste: el extractor de detalles ahora incluye tambien una seccion `Cubre` para capturar
+encabezados ADER como `Inversiones subvencionables`, `Gastos subvencionables`, `Gastos de
+constitucion` o `Costes subvencionables`. El prompt del LLM tambien exige copiar literalmente
+importes, fechas, porcentajes y rangos de edad para evitar reformular condiciones sensibles.
+Ademas, `Importe` se extrae antes que `Cubre` para que porcentajes como `35%` no queden
+clasificados como descripcion, y la respuesta final se normaliza para dejar el aviso legal
+orientativo una sola vez.
+Se mantiene el contexto por ayuda acotado para no disparar la latencia de Ollama local.
+La seccion `Importe` recibe mas margen de caracteres que el resto porque truncar cuantias
+provoca respuestas incompletas o numeros inventados.
 
 ## Ingesta manual multi-fuente
 
@@ -210,8 +411,18 @@ Para añadir candidatos propios (PDFs por URL o páginas web), crea `data/candid
 {"nombre":"Nombre de la ayuda","ambito":"larioja","categoria":"vivienda","url_oficial":"https://...","tipo_fuente":"auto","organismo":"Gobierno de La Rioja"}
 ```
 
+`data/candidatos.jsonl`, `data/candidatos_*.jsonl` y `data/test_*.jsonl` son archivos
+locales de trabajo y estan ignorados por git. El archivo versionado es
+`data/candidatos.example.jsonl`.
+
 ```powershell
 python src/ingestar_fuentes.py --candidatos data/candidatos.jsonl --indexar
+```
+
+Si sólo quieres comprobar extracción sin tocar Postgres:
+
+```powershell
+python src/ingestar_fuentes.py --candidatos data/candidatos.jsonl
 ```
 
 ---
@@ -224,6 +435,8 @@ python src/ingestar_fuentes.py --candidatos data/candidatos.jsonl --indexar
 - **Solapamiento de 50 palabras** entre fragmentos: evita cortar información clave justo en el límite.
 - **Separación fuente/fragmento:** `fuentes` guarda el documento o página oficial; `fragmentos` guarda los trozos vectorizados. Así el RAG puede crecer a varios tipos de ingesta.
 - **Candidatos antes que verdad:** una investigación externa solo propone URLs candidatas; el sistema debe descargar la fuente oficial y extraer texto real antes de indexar.
+- **Validación mínima de extracción:** no se indexan fuentes que devuelven texto vacío o demasiado corto; esos casos necesitan OCR, otro documento o revisión manual.
+- **Cobertura por términos:** BDNS no trae nuestras categorías internas; se buscan palabras clave por categoría. Para La Rioja, `empleo` cubre también negocio, autónomos, empresa, comercio, pymes y emprendimiento.
 - **Fuentes no-PDF como extensión, no sustitución:** primero se mantiene el pipeline de PDFs y después se añade ingesta desde HTML/sedes/boletines con validación.
 
 ---

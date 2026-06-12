@@ -1,18 +1,24 @@
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import ollama
 
-from rag.buscar import buscar_filtrado
+from rag.buscar import buscar_filtrado, obtener_textos_fuentes
 
 
 def limpiar_texto(texto: str) -> str:
     texto = re.sub(r"[^\x20-\x7E\xA0-\xFF\n]", " ", texto)
     texto = re.sub(r" {3,}", "  ", texto)
     return texto.strip()
+
+
+def normalizar_ascii(texto: str) -> str:
+    texto = unicodedata.normalize("NFKD", texto.lower())
+    return texto.encode("ascii", "ignore").decode("ascii")
 
 MODELO = "llama3.1:8b"
 DISTANCIA_MAX = 0.82
@@ -35,7 +41,10 @@ COMUNIDADES = {
 
 CATEGORIAS = {
     "formacion": "formacion", "formación": "formacion", "beca": "formacion", "becas": "formacion", "estudios": "formacion",
-    "empleo": "empleo", "trabajo": "empleo", "empresa": "empleo", "emprender": "empleo", "autonomo": "empleo", "autónomo": "empleo",
+    "empleo": "empleo", "trabajo": "empleo", "empresa": "empleo", "empresas": "empleo",
+    "negocio": "empleo", "negocios": "empleo", "pyme": "empleo", "pymes": "empleo",
+    "comercio": "empleo", "emprender": "empleo", "emprendedor": "empleo",
+    "emprendedores": "empleo", "autonomo": "empleo", "autónomo": "empleo",
     "vivienda": "vivienda", "alquiler": "vivienda", "piso": "vivienda",
     "carnet": "carnet", "carné": "carnet", "conducir": "carnet", "coche": "carnet",
     "movilidad": "movilidad", "extranjero": "movilidad", "erasmus": "movilidad",
@@ -55,6 +64,227 @@ def normalizar(texto: str, tabla: dict) -> str | None:
         if clave in texto:
             return valor
     return None
+
+
+def _bloques_texto(texto: str) -> list[str]:
+    texto = limpiar_texto(texto)
+    partes = re.split(r"\n+", texto)
+    bloques = []
+    for parte in partes:
+        parte = parte.strip(" -\t")
+        normalizado = normalizar_ascii(parte)
+        es_titulo_util = any(
+            clave in normalizado
+            for clave in (
+                "beneficiari", "requisit", "subvencion", "plazo", "solicite",
+                "inversiones subvencionables", "importes minimos", "tipo de ayuda",
+                "gastos de constitucion", "costes subvencionables",
+            )
+        )
+        if len(parte) >= 25 or es_titulo_util:
+            bloques.append(parte)
+    return bloques
+
+
+ENCABEZADOS_SECCION = {
+    "beneficiarios",
+    "requisitos",
+    "documentacion",
+    "subvencion a percibir",
+    "inversiones subvencionables",
+    "importes minimos y maximos subvencionables",
+    "tipo de ayuda",
+    "costes subvencionables",
+    "plazo",
+    "solicite esta ayuda",
+}
+
+
+def es_encabezado_seccion(bloque: str) -> bool:
+    return normalizar_ascii(bloque).strip(" :") in ENCABEZADOS_SECCION
+
+
+def construir_ventana(bloques: list[str], indice: int, max_bloques: int = 4) -> str:
+    bloque = bloques[indice]
+    if not es_encabezado_seccion(bloque):
+        salida = [bloque]
+        if indice + 1 < len(bloques) and not es_encabezado_seccion(bloques[indice + 1]):
+            salida.append(bloques[indice + 1])
+        return " ".join(salida)
+
+    salida = [bloque]
+    j = indice + 1
+    while j < len(bloques) and len(salida) < max_bloques:
+        if es_encabezado_seccion(bloques[j]):
+            break
+        salida.append(bloques[j])
+        j += 1
+    return " ".join(salida)
+
+
+def extraer_detalles_clave(texto_fuente: str, max_chars: int = 1900) -> str:
+    """
+    Extrae ventanas del texto completo que suelen contener los datos que el
+    ciudadano necesita: beneficiarios, requisitos, importe/subvencion y plazo.
+    """
+    bloques = _bloques_texto(texto_fuente)
+    if not bloques:
+        return limpiar_texto(texto_fuente)[:max_chars]
+
+    grupos = [
+        ("Beneficiarios", ["beneficiari", "destinatari", "personas que pueden"]),
+        ("Requisitos", ["requisit", "deberan", "debera"]),
+        ("Importe", ["subvencion a percibir", "importes minimos", "intensidad de ayuda", "subvencion maxima", "cuantia", "importe", "euros", "%", "subvencionable"]),
+        ("Cubre", ["inversiones subvencionables", "gastos subvencionables", "seran subvencionables", "programa de inversion", "gastos de constitucion", "costes subvencionables"]),
+        ("Plazo", ["plazo", "solicitudes finalizar", "presentacion de solicitudes"]),
+        ("Solicitud", ["solicite esta ayuda", "sede electronica", "como solicitar"]),
+    ]
+
+    seleccionados: list[str] = []
+    vistos: set[str] = set()
+    for nombre_grupo, claves in grupos:
+        max_por_grupo = 650 if nombre_grupo == "Importe" else 300
+        encontrado = False
+        for clave in claves:
+            for i, bloque in enumerate(bloques):
+                normalizado = normalizar_ascii(bloque)
+                if clave not in normalizado:
+                    continue
+                if (
+                    es_encabezado_seccion(bloque)
+                    and i + 1 < len(bloques)
+                    and es_encabezado_seccion(bloques[i + 1])
+                ):
+                    continue
+                max_bloques_ventana = 2 if nombre_grupo in {"Plazo", "Solicitud"} else 4
+                ventana = construir_ventana(bloques, i, max_bloques=max_bloques_ventana)
+                ventana = limpiar_texto(ventana)
+                clave_vista = normalizar_ascii(ventana[:180])
+                if clave_vista in vistos:
+                    continue
+                if len(ventana) > max_por_grupo:
+                    ventana = ventana[:max_por_grupo].rsplit(" ", 1)[0]
+                seleccionados.append(f"{nombre_grupo}: {ventana}")
+                vistos.add(clave_vista)
+                encontrado = True
+                break
+            if encontrado:
+                break
+
+    if not seleccionados:
+        return limpiar_texto(texto_fuente)[:max_chars]
+
+    salida: list[str] = []
+    usados = 0
+    for bloque in seleccionados:
+        if usados + len(bloque) > max_chars:
+            disponible = max_chars - usados
+            if disponible > 250:
+                salida.append(bloque[:disponible].rsplit(" ", 1)[0])
+            break
+        salida.append(bloque)
+        usados += len(bloque) + 2
+
+    return "\n".join(salida)
+
+
+def puntuar_resultado(resultado: dict, descripcion: str) -> float:
+    """
+    Ajuste ligero sobre la distancia vectorial: si la consulta contiene un
+    termino concreto y aparece en nombre/texto, sube esa ayuda en el ranking.
+    """
+    puntuacion = float(resultado["distancia"])
+    consulta = normalizar_ascii(descripcion)
+    nombre = normalizar_ascii(resultado.get("nombre", ""))
+    texto = normalizar_ascii(resultado.get("texto", "")[:1200])
+    contenido = f"{nombre} {texto}"
+
+    terminos = [
+        "autonom", "pyme", "pymes", "comercio", "emprend", "maquinaria",
+        "digitalizacion", "vehicul", "alquiler", "vivienda", "carnet",
+        "conducir", "beca", "formacion", "discapacidad", "dependencia",
+    ]
+    for termino in terminos:
+        if termino in consulta and termino in contenido:
+            puntuacion -= 0.08
+            if termino in nombre:
+                puntuacion -= 0.06
+
+    if resultado.get("tipo_fuente") == "html":
+        puntuacion -= 0.02
+    return puntuacion
+
+
+def clave_conceptual_ayuda(resultado: dict) -> str:
+    """
+    Agrupa la misma ayuda cuando aparece por varias fuentes oficiales
+    (por ejemplo ficha HTML de ADER + PDF de convocatoria en BDNS/ADER).
+    """
+    nombre = normalizar_ascii(resultado.get("nombre", ""))
+    url = normalizar_ascii(resultado.get("url_oficial", ""))
+    combinado = f"{nombre} {url}"
+
+    if "consolidacion" in combinado and "trabajo autonom" in combinado:
+        return "consolidacion-trabajo-autonomo"
+    if "ppa" in combinado or "primeros activos" in combinado:
+        return "ppa-primeros-activos"
+    if "coc" in combinado or "competitividad del comercio minorista" in combinado:
+        return "coc-comercio-minorista"
+    if "min-invierte-autonomos" in combinado or "inversiones por autonomos y empresas" in combinado:
+        return "min-invierte-autonomos-empresas"
+
+    base = re.sub(r"\b(ayudas?|subvenciones?|convocatoria|la rioja|20\d{2})\b", " ", nombre)
+    base = re.sub(r"[^a-z0-9]+", "-", base).strip("-")
+    return base or (resultado.get("url_oficial") or resultado["nombre"])
+
+
+def elegir_mejor_resultado(actual: dict, nuevo: dict, descripcion: str) -> dict:
+    """
+    Si dos resultados representan la misma ayuda, preferimos la ficha HTML
+    legible frente al PDF, y despues el mejor score.
+    """
+    if actual.get("tipo_fuente") != "html" and nuevo.get("tipo_fuente") == "html":
+        return nuevo
+    if actual.get("tipo_fuente") == "html" and nuevo.get("tipo_fuente") != "html":
+        return actual
+    if puntuar_resultado(nuevo, descripcion) < puntuar_resultado(actual, descripcion):
+        return nuevo
+    return actual
+
+
+def cierre_unico(respuesta: str) -> str:
+    cierre = "Información orientativa. Consulta la convocatoria oficial antes de solicitar."
+    respuesta = respuesta.replace(f"**{cierre}**", cierre)
+    partes = respuesta.split(cierre)
+    cuerpo = "".join(partes).strip()
+    cuerpo = re.sub(r"\n{3,}", "\n\n", cuerpo)
+    return f"{cuerpo}\n\n{cierre}"
+
+
+def resultados_relevantes(resultados: list[dict]) -> list[dict]:
+    return [r for r in resultados if r["distancia"] <= DISTANCIA_MAX]
+
+
+def seleccionar_top_ayudas(
+    perfil: dict,
+    resultados: list[dict],
+    limite: int = 3,
+) -> list[dict]:
+    relevantes = sorted(
+        resultados_relevantes(resultados),
+        key=lambda r: puntuar_resultado(r, perfil.get("descripcion", "")),
+    )
+
+    ayudas: dict[str, dict] = {}
+    descripcion = perfil.get("descripcion", "")
+    for r in relevantes:
+        clave = clave_conceptual_ayuda(r)
+        if clave not in ayudas:
+            ayudas[clave] = r
+        else:
+            ayudas[clave] = elegir_mejor_resultado(ayudas[clave], r, descripcion)
+
+    return list(ayudas.values())[:limite]
 
 
 def recoger_perfil() -> dict:
@@ -87,7 +317,7 @@ def recoger_perfil() -> dict:
 
 
 def generar_respuesta(perfil: dict, resultados: list[dict]) -> str:
-    relevantes = [r for r in resultados if r["distancia"] <= DISTANCIA_MAX]
+    relevantes = resultados_relevantes(resultados)
 
     if not relevantes:
         return (
@@ -104,30 +334,42 @@ def generar_respuesta(perfil: dict, resultados: list[dict]) -> str:
         )
     )
 
-    ayudas: dict[str, dict] = {}
-    for r in relevantes:
-        nombre = r["nombre"]
-        if nombre not in ayudas or r["distancia"] < ayudas[nombre]["distancia"]:
-            ayudas[nombre] = r
-
-    top_ayudas = dict(list(ayudas.items())[:3])
+    top_ayudas = seleccionar_top_ayudas(perfil, resultados, limite=3)
+    textos_fuentes = obtener_textos_fuentes(
+        [r["fuente_id"] for r in top_ayudas if r.get("fuente_id")]
+    )
 
     PALABRAS_LEY = ["cotizacion", "cotización", "subsidio por desempleo", "fogasa",
                     "estatuto", "reglamento general", "bases mínimas"]
 
     fragmentos = []
-    for i, (nombre, r) in enumerate(top_ayudas.items(), start=1):
-        texto_limpio = limpiar_texto(r["texto"])[:600]
+    for i, r in enumerate(top_ayudas, start=1):
+        nombre = r["nombre"]
+        texto_fuente = textos_fuentes.get(r.get("fuente_id")) or r["texto"]
+        detalles = extraer_detalles_clave(texto_fuente)
+        fragmento_semantico = limpiar_texto(r["texto"])[:260]
         es_ley = any(p in nombre.lower() for p in PALABRAS_LEY)
         etiqueta = "[LEY/REGLAMENTO - no es una ayuda directa]" if es_ley else "[CONVOCATORIA DE AYUDA]"
         url = r.get("url_oficial") or "sin URL oficial registrada"
-        fragmentos.append(f"[{i}] {nombre} {etiqueta}\nFuente: {url}\n{texto_limpio}")
+        fragmentos.append(
+            f"[{i}] {nombre} {etiqueta}\n"
+            f"Fuente: {url}\n"
+            f"Fragmento semantico encontrado:\n{fragmento_semantico}\n\n"
+            f"Datos clave extraidos de la fuente completa:\n{detalles}"
+        )
     contexto = "\n\n---\n\n".join(fragmentos)
+    hay_leyes = any("[LEY/REGLAMENTO" in fragmento for fragmento in fragmentos)
 
     aviso_foraneo = (
         f"\nNOTA: No hay datos específicos para {perfil['comunidad_raw']} en esta categoría. "
         "Los resultados son de otras comunidades — pueden servir de referencia.\n"
         if hay_resultados_foraneos else ""
+    )
+
+    instruccion_leyes = (
+        'Para las marcadas [LEY/REGLAMENTO], escribe solo "no aplicable".'
+        if hay_leyes else
+        "No añadas apartados de leyes o reglamentos si no aparecen marcados en el contexto."
     )
 
     prompt = f"""Ciudadano en {perfil['comunidad_raw']} busca: "{perfil['descripcion']}"
@@ -137,7 +379,11 @@ Aquí tienes {len(top_ayudas)} convocatoria(s) encontrada(s):
 {contexto}
 
 Para cada convocatoria marcada [CONVOCATORIA DE AYUDA], explica: para quién es, qué cubre, importe y plazo si aparecen.
-Para las marcadas [LEY/REGLAMENTO], escribe solo "no aplicable".
+Reglas:
+- Copia literalmente importes, fechas, porcentajes y rangos de edad cuando aparezcan.
+- No reformules "igual o anterior", "igual o posterior", "entre X e Y" ni condiciones parecidas.
+- Si un dato no aparece claramente, escribe "No aparece en la fuente proporcionada".
+- {instruccion_leyes}
 
 Termina con: "Información orientativa. Consulta la convocatoria oficial antes de solicitar."
 """
@@ -157,11 +403,11 @@ Termina con: "Información orientativa. Consulta la convocatoria oficial antes d
             ],
             options={"temperature": 0},
         )
-        return prefijo + respuesta.message.content
+        return prefijo + cierre_unico(respuesta.message.content)
     except Exception:
         nombres = "\n".join(
-            f"- {n} ({r.get('url_oficial') or 'sin URL oficial registrada'})"
-            for n, r in top_ayudas.items()
+            f"- {r['nombre']} ({r.get('url_oficial') or 'sin URL oficial registrada'})"
+            for r in top_ayudas
         )
         return (
             prefijo
@@ -184,7 +430,7 @@ def chat() -> None:
             pregunta=perfil["descripcion"],
             comunidad=perfil["comunidad"],
             categoria=perfil["categoria"],
-            k=8,
+            k=20,
         )
 
         if not resultados and perfil["categoria"] != "todas":
@@ -193,7 +439,7 @@ def chat() -> None:
                 pregunta=perfil["descripcion"],
                 comunidad="todas",
                 categoria=perfil["categoria"],
-                k=8,
+                k=20,
             )
 
         if not resultados and perfil["comunidad"] != "todas":
@@ -202,7 +448,7 @@ def chat() -> None:
                 pregunta=perfil["descripcion"],
                 comunidad=perfil["comunidad"],
                 categoria="todas",
-                k=8,
+                k=20,
             )
 
         if not resultados:
@@ -211,7 +457,7 @@ def chat() -> None:
                 pregunta=perfil["descripcion"],
                 comunidad="todas",
                 categoria="todas",
-                k=8,
+                k=20,
             )
 
         print("=" * 60)

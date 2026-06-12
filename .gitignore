@@ -32,7 +32,11 @@ Thumbs.db
 data/convocatorias/*.pdf
 
 # Archivos generados por el pipeline BDNS (se regeneran en cada ejecucion)
+data/candidatos.jsonl
 data/candidatos_bdns.jsonl
+data/candidatos_*.jsonl
+data/test_*.jsonl
+data/evaluaciones/*.md
 debug.log
 
 # Jupyter
