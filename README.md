@@ -26,12 +26,13 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 | Ingesta multi-fuente (`src/ingesta/`) | ✅ Pipeline JSONL + adaptadores PDF/HTML/bdns_api |
 | **BDNS API** (`src/ingesta/fuentes/bdns.py`) | ✅ Descubrimiento automatico de convocatorias |
 | **ADER** (`src/ingesta/fuentes/ader.py`) | ✅ Descubridor inicial de ayudas de negocio/empresa en La Rioja |
-| Evaluacion RAG (`src/evaluar_rag.py`) | ✅ Bateria reproducible de preguntas, ranking y respuestas |
+| Evaluacion RAG (`src/evaluar_rag.py`) | ✅ Golden set con veredicto PASS/FAIL y código de salida (gate) |
+| Vigencia (`src/db/vigencia.py`) | ✅ Marca abierta/cerrada/desconocida; las cerradas bajan en ranking y avisan |
 | Pipeline de actualización completo | 🔄 En curso (Fase 5) |
 
-Datos locales comprobados el 2026-06-13: **104 fuentes** y **1343 fragmentos** en Postgres
-(**76 PDF + 28 HTML** de ADER). El conector BDNS descubre candidatos y descarga documentos,
-pero no todos están indexados todavía en la base local.
+Datos locales comprobados el 2026-06-13: **108 fuentes** y **1374 fragmentos** en Postgres
+(**79 PDF + 29 HTML**). Vigencia: 28 abiertas, 23 cerradas, 57 desconocidas. El conector BDNS
+descubre candidatos y descarga documentos, pero no todos están indexados todavía en la base local.
 
 ---
 
