@@ -89,22 +89,40 @@ NIVEL2_A_AMBITO = {
 }
 
 
+# Municipios de La Rioja: las ayudas LOCALES llevan el nombre del pueblo en
+# nivel2/nivel3 (ej. "LOGRONO", "AYUNTAMIENTO DE LOGRONO"), que no contienen
+# "rioja" y por eso quedaban sin clasificar. Incluimos la capital y los
+# municipios mas poblados, en forma sin tilde para casar con el texto normalizado.
+# Se evitan nombres ambiguos compartidos con otras provincias salvo en su forma
+# completa (ej. "santo domingo de la calzada").
+MUNICIPIOS_LARIOJA = {
+    "logrono", "calahorra", "arnedo", "haro", "alfaro", "najera", "lardero",
+    "villamediana de iregua", "santo domingo de la calzada", "cervera del rio alhama",
+    "autol", "rincon de soto", "pradejon", "aldeanueva de ebro", "navarrete",
+    "ezcaray", "fuenmayor", "cenicero", "quel", "agoncillo", "alberite",
+    "albelda de iregua", "entrena", "casalarreina", "munillo de rio leza",
+}
+
+
+def _normalizar_ascii(texto: str) -> str:
+    import unicodedata
+    return unicodedata.normalize("NFKD", (texto or "").lower()).encode("ascii", "ignore").decode("ascii")
+
+
 def inferir_ambito(nivel1: str, nivel2: str, nivel3: str = "") -> str:
     """Convierte los campos nivel1/nivel2/nivel3 de la BDNS al ambito interno del sistema."""
     n1 = nivel1.upper().strip()
     if n1 == "ESTADO":
         return "estatal"
-    if n1 == "AUTONOMICA":
-        nivel2_lower = (nivel2 or "").lower()
-        for fragmento, ambito in NIVEL2_A_AMBITO.items():
-            if fragmento in nivel2_lower:
-                return ambito
-    if n1 == "LOCAL":
-        # Para entidades locales (ayuntamientos, diputaciones) buscamos en nivel2+nivel3
-        combinado = ((nivel2 or "") + " " + (nivel3 or "")).lower()
+    if n1 in ("AUTONOMICA", "LOCAL"):
+        # Para LOCAL miramos nivel2+nivel3 (ayuntamiento/pueblo); para AUTONOMICA, nivel2.
+        combinado = _normalizar_ascii(nivel2) if n1 == "AUTONOMICA" else _normalizar_ascii(f"{nivel2} {nivel3}")
         for fragmento, ambito in NIVEL2_A_AMBITO.items():
             if fragmento in combinado:
                 return ambito
+        # Fallback por municipio riojano (Logrono y principales) para ayudas LOCALES.
+        if any(m in combinado for m in MUNICIPIOS_LARIOJA):
+            return "larioja"
     return "desconocido"
 
 
@@ -113,6 +131,10 @@ BLACKLIST_DESC = [
     "por real decreto",       # subvenciones directas concedidas por decreto, no competitivas
     "cooperacion internacional",  # cooperación con países extranjeros
     "subvencion directa a",   # subvención nominativa a una entidad concreta
+    "adenda",                 # adendas a convenios; actos administrativos, no ayudas a ciudadanos
+    "acuerdo de la junta de gobierno",  # actos de juntas de gobierno locales
+    "acuerdo junta de gobierno",
+    "convenio marco",         # convenios marco entre administraciones/entidades
 ]
 
 

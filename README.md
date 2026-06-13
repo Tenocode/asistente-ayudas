@@ -42,7 +42,7 @@ pero no todos están indexados todavía en la base local.
 | Ámbito | Total | Desglose |
 |---|---|---|
 | estatal | 56 | formación 16 · empleo 12 · movilidad 10 · cultura 9 · dependencia 5 · vivienda 4 · **carnet 0** |
-| La Rioja | 44 | **empleo 31** · formación 5 · vivienda 5 · **carnet 1 (IRJ, 2026-06-13)** · cultura 1 · movilidad 1 · **dependencia 0** |
+| La Rioja | 47 | **empleo 34** · formación 5 · vivienda 5 · **carnet 1 (IRJ)** · cultura 1 · movilidad 1 · **dependencia 0** |
 | otras CCAA | 5 | solo carnet (Murcia, Andalucía, Extremadura×2, Castilla y León) |
 
 Lectura: la **fortaleza** es La Rioja empleo/empresa (31, todo ADER). Carnet La Rioja ya
@@ -85,9 +85,22 @@ dependencia (0 en La Rioja) y vivienda/formación finas (5 cada una). El nicho d
    `carnet_conducir` devuelve la fuente riojana (antes caía a Extremadura) y es caso
    **bloqueante** en el golden set. La ficha no publica importe por persona (está en el BOR),
    así que la respuesta lo dice honestamente en vez de inventarlo.
-4. **Limpiar boilerplate de ADER + reindexar PDFs degradados** (palabras pegadas, € perdidos)
+4. **Barrido BDNS de La Rioja — HECHO (2026-06-13).** Hallazgo: el barrido **autonómico** ya
+   estaba saturado (vivienda/formación que devolvía ya estaban indexadas; dependencia = 0 en
+   BDNS). El filón estaba en lo **LOCAL**: `inferir_ambito` no reconocía Logroño ni los
+   municipios riojanos, así que sus ayudas caían como "desconocido". Se añadió `MUNICIPIOS_LARIOJA`
+   (capital + principales) al conector. El re-barrido encontró 11 candidatos locales, pero la
+   mayoría eran **convenios/adendas administrativos** (no ayudas a ciudadanos) → se añadieron a
+   la BLACKLIST del conector. Se indexaron solo las 3 genuinas: Concurso Emprendedores de Alfaro,
+   CS Emprendimiento (cooperativas) y Bases de contratación de menores de 30 / Garantía Juvenil.
+   Conclusión: la veta de BDNS para La Rioja está prácticamente agotada; lo que falta
+   (dependencia, ayudas reales de emprendimiento de Logroño) necesita portales directos, como
+   se hizo con el carnet del IRJ.
+6. **Limpiar boilerplate de ADER + reindexar PDFs degradados** (palabras pegadas, € perdidos)
    → mejor recall y recuperar cuantías; permite quitar el parche de `k=30`.
-5. **Filtro por edad/perfil** (Fase 3): muchas ayudas son ≤35 años; hoy no filtramos por edad.
+7. **Filtro por edad/perfil** (Fase 3): muchas ayudas son ≤35 años; hoy no filtramos por edad.
+8. **Dependencia La Rioja y emprendimiento real de Logroño**: BDNS no los tiene; requieren
+   scraping directo del portal de Servicios Sociales / Ayuntamiento de Logroño (como el IRJ).
 
 Diagnóstico de fondo: la latencia es del MODELO (fija) y el retrieval (lo que crece con la BD)
 es barato e indexable. Por tanto **el cuello de botella para ser "vendible" son los DATOS**
