@@ -17,6 +17,8 @@ CREATE TABLE fuentes (
     tipo_fuente    TEXT NOT NULL DEFAULT 'pdf',
     origen_archivo TEXT,
     fecha_revision TIMESTAMPTZ NOT NULL DEFAULT now(),
+    fecha_fin      DATE,
+    estado         TEXT NOT NULL DEFAULT 'desconocida',
     texto_extraido TEXT NOT NULL DEFAULT ''
 );
 """

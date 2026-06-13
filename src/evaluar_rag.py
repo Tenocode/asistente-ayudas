@@ -190,6 +190,16 @@ def checks_basicos(
         + ("no" if len(claves) == len(set(claves)) else "si")
     )
 
+    estados = [a.get("estado") for a in top_ayudas]
+    checks.append(f"top_estados: {estados}")
+    cerradas = [a for a in top_ayudas if a.get("estado") == "cerrada"]
+    if cerradas:
+        if respuesta is not None:
+            ok = "plazo cerrado" in respuesta.lower()
+            checks.append(f"aviso_cerradas: {'ok' if ok else 'FALTA'} ({len(cerradas)} cerradas en top)")
+        else:
+            checks.append(f"top_cerradas: {len(cerradas)} (el aviso se valida en modo con LLM)")
+
     if respuesta:
         tiene_importe = bool(re.search(r"\b(euros?|%|importe|cuantia|cuantía)\b", respuesta, re.I))
         tiene_plazo = bool(re.search(r"\b(plazo|hasta|solicitudes|20\d{2})\b", respuesta, re.I))
@@ -207,7 +217,8 @@ def fila_resultado(resultado: dict, pregunta: str) -> str:
     score = puntuar_resultado(resultado, pregunta)
     return (
         f"- `{resultado['distancia']}` score `{score:.4f}` "
-        f"`{resultado.get('tipo_fuente')}` frag `{resultado.get('numero_fragmento')}` "
+        f"`{resultado.get('tipo_fuente')}` `{resultado.get('estado')}` "
+        f"frag `{resultado.get('numero_fragmento')}` "
         f"**{resultado['nombre']}**  \n"
         f"  {resultado.get('url_oficial') or 'sin URL'}"
     )

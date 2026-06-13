@@ -32,6 +32,7 @@ def buscar(pregunta: str, k: int = TOP_K) -> list[dict]:
                 """
                 SELECT fuentes.id, fuentes.nombre, fuentes.ambito, fuentes.categoria,
                        fuentes.url_oficial, fuentes.tipo_fuente,
+                       fuentes.fecha_fin, fuentes.estado,
                        fragmentos.numero_fragmento, fragmentos.texto,
                        fragmentos.embedding <=> %s::vector AS distancia
                 FROM fragmentos
@@ -51,9 +52,11 @@ def buscar(pregunta: str, k: int = TOP_K) -> list[dict]:
             "categoria": fila[3],
             "url_oficial": fila[4],
             "tipo_fuente": fila[5],
-            "numero_fragmento": fila[6],
-            "texto": fila[7],
-            "distancia": round(fila[8], 4),
+            "fecha_fin": fila[6],
+            "estado": fila[7],
+            "numero_fragmento": fila[8],
+            "texto": fila[9],
+            "distancia": round(fila[10], 4),
         }
         for fila in filas
     ]
@@ -85,6 +88,7 @@ def buscar_filtrado(
     sql = f"""
         SELECT fuentes.id, fuentes.nombre, fuentes.ambito, fuentes.categoria,
                fuentes.url_oficial, fuentes.tipo_fuente,
+               fuentes.fecha_fin, fuentes.estado,
                fragmentos.numero_fragmento, fragmentos.texto,
                fragmentos.embedding <=> %s::vector AS distancia
         FROM fragmentos
@@ -107,9 +111,11 @@ def buscar_filtrado(
             "categoria": fila[3],
             "url_oficial": fila[4],
             "tipo_fuente": fila[5],
-            "numero_fragmento": fila[6],
-            "texto": fila[7],
-            "distancia": round(fila[8], 4),
+            "fecha_fin": fila[6],
+            "estado": fila[7],
+            "numero_fragmento": fila[8],
+            "texto": fila[9],
+            "distancia": round(fila[10], 4),
         }
         for fila in filas
     ]

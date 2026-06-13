@@ -315,6 +315,13 @@ def puntuar_resultado(resultado: dict, descripcion: str) -> float:
     if pide_pequeno and ("gran empresa" in nombre or "grandes empresas" in nombre):
         puntuacion += 0.12
 
+    # Vigencia: una convocatoria con plazo cerrado se degrada de forma MODERADA,
+    # nunca se descarta (suele ser anual y reabrir; ademas el parser de fechas
+    # puede fallar y no queremos ocultar una ayuda valida por un falso positivo).
+    # 'desconocida' no se penaliza: no sabemos la fecha, seria injusto castigarla.
+    if resultado.get("estado") == "cerrada":
+        puntuacion += 0.10
+
     if resultado.get("tipo_fuente") == "html":
         puntuacion -= 0.02
     return puntuacion
@@ -364,6 +371,43 @@ def cierre_unico(respuesta: str) -> str:
     cuerpo = "".join(partes).strip()
     cuerpo = re.sub(r"\n{3,}", "\n\n", cuerpo)
     return f"{cuerpo}\n\n{cierre}"
+
+
+def _fecha_es(fecha) -> str:
+    """Formatea una fecha (date o str ISO) como DD/MM/YYYY; vacio si no hay."""
+    if not fecha:
+        return ""
+    try:
+        return fecha.strftime("%d/%m/%Y")
+    except AttributeError:
+        partes = str(fecha).split("-")
+        return "/".join(reversed(partes)) if len(partes) == 3 else str(fecha)
+
+
+def avisos_vigencia(ayudas: list[dict]) -> list[str]:
+    """
+    Aviso DETERMINISTA para convocatorias con plazo cerrado. No depende del LLM:
+    se genera leyendo estado/fecha_fin de la BD para garantizar que el ciudadano
+    siempre ve la advertencia, diga lo que diga el modelo.
+    """
+    avisos = []
+    for a in ayudas:
+        if a.get("estado") == "cerrada":
+            fecha = _fecha_es(a.get("fecha_fin"))
+            cuando = f"el {fecha}" if fecha else "(fecha no determinada)"
+            avisos.append(
+                f"- {a['nombre']}: plazo cerrado {cuando}. "
+                "Suele ser anual; comprueba si hay una nueva convocatoria abierta."
+            )
+    return avisos
+
+
+def aplicar_avisos(contenido: str, top_ayudas: list[dict]) -> str:
+    avisos = avisos_vigencia(top_ayudas)
+    if not avisos:
+        return contenido
+    bloque = "Avisos de plazo:\n" + "\n".join(avisos)
+    return f"{contenido}\n\n{bloque}"
 
 
 def resultados_relevantes(resultados: list[dict]) -> list[dict]:
@@ -455,6 +499,8 @@ def generar_respuesta(perfil: dict, resultados: list[dict]) -> str:
         fragmento_semantico = limpiar_texto(r["texto"])[:260]
         es_ley = any(p in nombre.lower() for p in PALABRAS_LEY)
         etiqueta = "[LEY/REGLAMENTO - no es una ayuda directa]" if es_ley else "[CONVOCATORIA DE AYUDA]"
+        if r.get("estado") == "cerrada":
+            etiqueta += f" [PLAZO CERRADO el {_fecha_es(r.get('fecha_fin')) or 'fecha no determinada'}]"
         url = r.get("url_oficial") or "sin URL oficial registrada"
         fragmentos.append(
             f"[{i}] {nombre} {etiqueta}\n"
@@ -477,6 +523,13 @@ def generar_respuesta(perfil: dict, resultados: list[dict]) -> str:
         "No añadas apartados de leyes o reglamentos si no aparecen marcados en el contexto."
     )
 
+    hay_cerradas = any(r.get("estado") == "cerrada" for r in top_ayudas)
+    instruccion_cerradas = (
+        '- Para las marcadas [PLAZO CERRADO el ...], en el campo Plazo escribe '
+        '"Cerrado el <fecha>" (no escribas "abierto").\n'
+        if hay_cerradas else ""
+    )
+
     prompt = f"""Ciudadano en {perfil['comunidad_raw']} busca: "{perfil['descripcion']}"
 {aviso_foraneo}
 Aquí tienes {len(top_ayudas)} convocatoria(s) encontrada(s):
@@ -491,7 +544,7 @@ Reglas:
 - NUNCA inventes, estimes ni redondees un importe o porcentaje. Si en los datos de una
   convocatoria no hay ninguna cifra de importe, en su campo Importe escribe exactamente
   "No aparece en la fuente proporcionada". Es preferible no dar importe que dar uno falso.
-- {instruccion_leyes}
+{instruccion_cerradas}- {instruccion_leyes}
 
 Termina con: "Información orientativa. Consulta la convocatoria oficial antes de solicitar."
 """
@@ -514,18 +567,20 @@ Termina con: "Información orientativa. Consulta la convocatoria oficial antes d
             # (vistas de >10 min en CPU); num_ctx fija la ventana de contexto.
             options={"temperature": 0, "num_predict": 1024, "num_ctx": 4096},
         )
-        return prefijo + cierre_unico(respuesta.message.content)
+        contenido = aplicar_avisos(respuesta.message.content, top_ayudas)
+        return prefijo + cierre_unico(contenido)
     except Exception:
         nombres = "\n".join(
             f"- {r['nombre']} ({r.get('url_oficial') or 'sin URL oficial registrada'})"
             for r in top_ayudas
         )
-        return (
+        cuerpo = (
             prefijo
             + f"He encontrado estas convocatorias que podrían interesarte:\n{nombres}\n\n"
-            "Consulta cada convocatoria directamente para obtener los detalles.\n\n"
-            "Información orientativa. Consulta la convocatoria oficial antes de solicitar."
+            "Consulta cada convocatoria directamente para obtener los detalles."
         )
+        cuerpo = aplicar_avisos(cuerpo, top_ayudas)
+        return cuerpo + "\n\nInformación orientativa. Consulta la convocatoria oficial antes de solicitar."
 
 
 def chat() -> None:

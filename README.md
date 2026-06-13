@@ -29,11 +29,64 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 | Evaluacion RAG (`src/evaluar_rag.py`) | ✅ Bateria reproducible de preguntas, ranking y respuestas |
 | Pipeline de actualización completo | 🔄 En curso (Fase 5) |
 
-Datos locales comprobados el 2026-06-12: **76 fuentes** y **1238 fragmentos** en Postgres,
-todas con `tipo_fuente='pdf'`. El conector BDNS ya descubre candidatos y descarga documentos,
-pero esos candidatos no tienen por qué estar indexados todavía en la base local.
-Categorías: formacion, empleo, movilidad, cultura, vivienda, dependencia, carnet.
-Ámbitos: estatal (56), larioja (15), extremadura (2), andalucia (1), castillaleon (1), murcia (1).
+Datos locales comprobados el 2026-06-13: **104 fuentes** y **1343 fragmentos** en Postgres
+(**76 PDF + 28 HTML** de ADER). El conector BDNS descubre candidatos y descarga documentos,
+pero no todos están indexados todavía en la base local.
+
+---
+
+## Cobertura actual y hoja de ruta (2026-06-13)
+
+### Qué cubrimos (fuentes por ámbito × categoría)
+
+| Ámbito | Total | Desglose |
+|---|---|---|
+| estatal | 56 | formación 16 · empleo 12 · movilidad 10 · cultura 9 · dependencia 5 · vivienda 4 · **carnet 0** |
+| La Rioja | 43 | **empleo 31** · formación 5 · vivienda 5 · cultura 1 · movilidad 1 · **carnet 0 · dependencia 0** |
+| otras CCAA | 5 | solo carnet (Murcia, Andalucía, Extremadura×2, Castilla y León) |
+
+Lectura: la **fortaleza** es La Rioja empleo/empresa (31, todo ADER). Los **huecos** son
+carnet (0 en La Rioja y estatal, pese a ser categoría de lanzamiento), dependencia (0 en
+La Rioja) y vivienda/formación finas (5 cada una). El nicho de arranque era
+*vivienda · carnet · formación · empleo*: empleo ✅, vivienda/formación 🟡, **carnet 🔴 vacío**.
+
+### Hoja de ruta priorizada
+
+1. **Vigencia de convocatorias.**
+   - **Paso 1 — HECHO (2026-06-13).** Esquema ampliado con `fecha_fin DATE` y `estado`
+     (`abierta`/`cerrada`/`desconocida`). Nuevo módulo `src/db/vigencia.py`: parsea fechas en
+     español (incluye fechas "pegadas" de PDFs degradados tipo `1deseptiembrede2025`), marca
+     cada fuente y rellena las columnas SIN reindexar (`ALTER ADD COLUMN` + backfill leyendo
+     `texto_extraido`). Reparto inicial: 29 abiertas, 17 cerradas, 58 desconocidas. Ejecutar:
+     `python src/db/vigencia.py` (o `--informe` para ver el reparto).
+   - **Paso 2 — HECHO (2026-06-13).** `buscar` devuelve ahora `estado` y `fecha_fin`. En
+     `puntuar_resultado` las `cerrada` reciben una penalización **moderada** (+0,10) que las
+     baja en ranking **sin ocultarlas** (un falso positivo del parser solo molesta, nunca
+     esconde una ayuda válida); `desconocida` no se penaliza. El aviso de plazo cerrado es
+     **determinista** (`avisos_vigencia`/`aplicar_avisos`): se genera leyendo la BD y se añade
+     como pie garantizado, no depende de que el LLM lo recuerde; además el contexto marca
+     `[PLAZO CERRADO el ...]` para que la línea de Plazo sea coherente. El evaluador muestra
+     `top_estados` y comprueba que las cerradas del top lleven aviso. Validado: en
+     `autonomo_larioja`, Consolidación (cerró 14-may-2026) baja a 2ª, Inversiones (abierta)
+     sube a 1ª, y la respuesta incluye el aviso. Sin regresión en el resto.
+2. **Ampliar el evaluador con cuantías esperadas por caso** (golden set) → red de regresión.
+3. **Conector carnet La Rioja (IRJ / Gobierno de La Rioja)** → cerrar la categoría vacía.
+4. **Limpiar boilerplate de ADER + reindexar PDFs degradados** (palabras pegadas, € perdidos)
+   → mejor recall y recuperar cuantías; permite quitar el parche de `k=30`.
+5. **Filtro por edad/perfil** (Fase 3): muchas ayudas son ≤35 años; hoy no filtramos por edad.
+
+Diagnóstico de fondo: la latencia es del MODELO (fija) y el retrieval (lo que crece con la BD)
+es barato e indexable. Por tanto **el cuello de botella para ser "vendible" son los DATOS**
+(cobertura + frescura + vigencia), no la infraestructura.
+
+### Disciplina de pruebas (testing continuo)
+
+`src/evaluar_rag.py` es el "CI" del proyecto. Regla: **ningún cambio se da por bueno sin la
+batería verde**. Tras cada cambio en ranking, extractor, prompt o datos, ejecutar
+`python src/evaluar_rag.py --sin-llm` y comparar el último informe; modo con LLM solo en casos
+ya estables. Al cerrar una mejora, **añadir/actualizar el caso** con sus cuantías esperadas
+para blindarlo. Workflow ligero (eval como gate + golden set + plantilla de conector); CI/CD
+pesado todavía es prematuro.
 
 ---
 
@@ -176,6 +229,7 @@ asistente-ayudas/
   src/
     db/
       init_db.py          # crea tablas `fuentes` + `fragmentos` (DROP + CREATE)
+      vigencia.py         # marca fecha_fin/estado (abierta/cerrada/desconocida) leyendo el texto
     ingesta/
       trocear.py          # extrae texto de PDFs y trocea en fragmentos ~500 palabras
       modelos.py          # tipos de datos: CandidatoFuente, FuenteExtraida
