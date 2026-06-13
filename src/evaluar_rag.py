@@ -28,7 +28,15 @@ class CasoEval:
     comunidad: str
     comunidad_raw: str
     categoria: str
+    # Nombres de ayudas que deben aparecer en el top / respuesta.
     esperadas: tuple[str, ...] = ()
+    # Cifras (importes, %) que la respuesta del LLM DEBE citar literalmente.
+    # Solo se verifican en modo con LLM (sin --sin-llm). Es el "golden set":
+    # congela las cuantias que ya validamos para que no se pierdan en silencio.
+    cuantias: tuple[str, ...] = ()
+    # bloqueante=True => si falla, la bateria sale en rojo (regresion real).
+    # bloqueante=False => caso objetivo / hueco conocido: se mide pero no tumba.
+    bloqueante: bool = True
     notas: str = ""
 
 
@@ -44,6 +52,8 @@ CASOS: tuple[CasoEval, ...] = (
             "Inversiones por autónomos y empresas",
             "PPA - Promoción de emprendedores",
         ),
+        cuantias=("2.700", "2.100"),
+        bloqueante=True,
         notas="Caso principal tras indexar ADER. Debe evitar duplicar ficha HTML + PDF.",
     ),
     CasoEval(
@@ -53,6 +63,8 @@ CASOS: tuple[CasoEval, ...] = (
         comunidad_raw="La Rioja",
         categoria="empleo",
         esperadas=("Inversiones por pymes", "Inversiones por autónomos y empresas"),
+        cuantias=("70 euros",),
+        bloqueante=True,
     ),
     CasoEval(
         id="comercio_minorista",
@@ -61,6 +73,18 @@ CASOS: tuple[CasoEval, ...] = (
         comunidad_raw="La Rioja",
         categoria="empleo",
         esperadas=("COC - Plan para la Competitividad del Comercio Minorista",),
+        cuantias=("25%", "35%"),
+        bloqueante=True,
+    ),
+    CasoEval(
+        id="vivienda_joven",
+        pregunta="Tengo 24 anos y busco ayuda de alquiler o vivienda en La Rioja",
+        comunidad="larioja",
+        comunidad_raw="La Rioja",
+        categoria="vivienda",
+        esperadas=("Ayudas alquiler vivienda joven", "alquiler"),
+        cuantias=("250 euros",),
+        bloqueante=True,
     ),
     CasoEval(
         id="digitalizacion_empresa",
@@ -72,6 +96,9 @@ CASOS: tuple[CasoEval, ...] = (
             "Digitalización e Industria",
             "Cheque de innovación digitalización",
         ),
+        cuantias=("50%",),
+        bloqueante=False,
+        notas="Objetivo: falta subir 'Digitalizacion e Industria' al top.",
     ),
     CasoEval(
         id="emprender_logrono",
@@ -80,15 +107,8 @@ CASOS: tuple[CasoEval, ...] = (
         comunidad_raw="La Rioja",
         categoria="empleo",
         esperadas=("PPA - Promoción de emprendedores",),
-        notas="Logroño aun no tiene conector local; deberia apoyarse en ADER/La Rioja.",
-    ),
-    CasoEval(
-        id="vivienda_joven",
-        pregunta="Tengo 24 anos y busco ayuda de alquiler o vivienda en La Rioja",
-        comunidad="larioja",
-        comunidad_raw="La Rioja",
-        categoria="vivienda",
-        esperadas=("Ayudas alquiler vivienda joven", "alquiler"),
+        bloqueante=False,
+        notas="Objetivo: Logroño aun no tiene conector local; deberia apoyarse en ADER/La Rioja.",
     ),
     CasoEval(
         id="carnet_conducir",
@@ -97,7 +117,9 @@ CASOS: tuple[CasoEval, ...] = (
         comunidad_raw="La Rioja",
         categoria="carnet",
         esperadas=("carnet", "conducir"),
-        notas="Caso para detectar huecos de cobertura IRJ/Gobierno La Rioja.",
+        cuantias=("1.300", "1.500"),
+        bloqueante=False,
+        notas="Objetivo: hueco de cobertura IRJ/Gobierno La Rioja (0 ayudas de carnet en La Rioja).",
     ),
 )
 
@@ -166,51 +188,74 @@ def contiene(texto: str, patron: str) -> bool:
     return normalizar_ascii(patron) in normalizar_ascii(texto)
 
 
-def checks_basicos(
+def analizar_caso(
     caso: CasoEval,
     top_ayudas: list[dict],
     respuesta: str | None,
-) -> list[str]:
+) -> tuple[bool, list[str], list[str]]:
+    """
+    Comprueba el caso contra su golden set y devuelve (paso, fallos, lineas).
+    - paso: True si no hay fallos verificables.
+    - fallos: lista de etiquetas de los checks que fallaron.
+    - lineas: detalle legible para el informe.
+    Los checks que requieren la respuesta del LLM (cuantias, aviso de cerrada)
+    se marcan como "pendiente con LLM" en modo --sin-llm y NO cuentan como fallo.
+    """
     texto_top = "\n".join(
         f"{a.get('nombre', '')} {a.get('url_oficial', '')}" for a in top_ayudas
     )
     texto_eval = f"{texto_top}\n{respuesta or ''}"
+    resp_low = (respuesta or "").lower()
 
-    checks = []
+    fallos: list[str] = []
+    lineas: list[str] = []
+
+    # 1. Nombres de ayudas esperados (ranking/cobertura).
     if caso.esperadas:
-        encontradas = [e for e in caso.esperadas if contiene(texto_eval, e)]
-        checks.append(f"esperadas: {len(encontradas)}/{len(caso.esperadas)} -> {encontradas}")
+        faltan = [e for e in caso.esperadas if not contiene(texto_eval, e)]
+        lineas.append(
+            f"nombres: {len(caso.esperadas) - len(faltan)}/{len(caso.esperadas)}"
+            + (f" FALTAN {faltan}" if faltan else "")
+        )
+        if faltan:
+            fallos.append("nombres")
 
-    urls_ok = all(a.get("url_oficial") for a in top_ayudas)
-    checks.append(f"urls_oficiales_top: {'ok' if urls_ok else 'faltan'}")
+    # 2. Cuantias obligatorias (golden set). Solo con LLM.
+    if caso.cuantias:
+        if respuesta is not None:
+            faltan = [c for c in caso.cuantias if normalizar_ascii(c) not in normalizar_ascii(resp_low)]
+            lineas.append(
+                f"cuantias: {len(caso.cuantias) - len(faltan)}/{len(caso.cuantias)}"
+                + (f" FALTAN {faltan}" if faltan else "")
+            )
+            if faltan:
+                fallos.append("cuantias")
+        else:
+            lineas.append(f"cuantias: pendiente con LLM -> {list(caso.cuantias)}")
 
-    claves = [clave_conceptual_ayuda(a) for a in top_ayudas]
-    checks.append(
-        "duplicados_conceptuales_top: "
-        + ("no" if len(claves) == len(set(claves)) else "si")
-    )
-
-    estados = [a.get("estado") for a in top_ayudas]
-    checks.append(f"top_estados: {estados}")
+    # 3. Seguridad de vigencia: una cerrada en el top DEBE llevar aviso.
     cerradas = [a for a in top_ayudas if a.get("estado") == "cerrada"]
     if cerradas:
         if respuesta is not None:
-            ok = "plazo cerrado" in respuesta.lower()
-            checks.append(f"aviso_cerradas: {'ok' if ok else 'FALTA'} ({len(cerradas)} cerradas en top)")
+            ok = "plazo cerrado" in resp_low
+            lineas.append(f"aviso_cerradas: {'ok' if ok else 'FALTA'} ({len(cerradas)} en top)")
+            if not ok:
+                fallos.append("aviso_cerradas")
         else:
-            checks.append(f"top_cerradas: {len(cerradas)} (el aviso se valida en modo con LLM)")
+            lineas.append(f"aviso_cerradas: pendiente con LLM ({len(cerradas)} en top; pie determinista)")
 
-    if respuesta:
-        tiene_importe = bool(re.search(r"\b(euros?|%|importe|cuantia|cuantía)\b", respuesta, re.I))
-        tiene_plazo = bool(re.search(r"\b(plazo|hasta|solicitudes|20\d{2})\b", respuesta, re.I))
-        checks.append(f"respuesta_menciona_importe: {'si' if tiene_importe else 'no'}")
-        checks.append(f"respuesta_menciona_plazo: {'si' if tiene_plazo else 'no'}")
-        checks.append(
-            "aviso_orientativo: "
-            + str(respuesta.count("Información orientativa. Consulta la convocatoria oficial antes de solicitar."))
-        )
+    # 4. URLs oficiales presentes (sin URL no podemos citar la fuente).
+    urls_ok = all(a.get("url_oficial") for a in top_ayudas)
+    lineas.append(f"urls_oficiales_top: {'ok' if urls_ok else 'FALTAN'}")
+    if not urls_ok:
+        fallos.append("urls")
 
-    return checks
+    # 5. Informativos (no bloquean).
+    claves = [clave_conceptual_ayuda(a) for a in top_ayudas]
+    lineas.append("duplicados_conceptuales_top: " + ("no" if len(claves) == len(set(claves)) else "si"))
+    lineas.append(f"top_estados: {[a.get('estado') for a in top_ayudas]}")
+
+    return (len(fallos) == 0), fallos, lineas
 
 
 def fila_resultado(resultado: dict, pregunta: str) -> str:
@@ -228,7 +273,7 @@ def render_caso(
     caso: CasoEval,
     k: int,
     incluir_llm: bool,
-) -> tuple[str, list[str]]:
+) -> tuple[str, bool, list[str]]:
     perfil = perfil_desde_caso(caso)
     resultados, modo = buscar_con_fallback(perfil, k)
     top_ayudas = seleccionar_top_ayudas(perfil, resultados, limite=3)
@@ -236,19 +281,25 @@ def render_caso(
         [a["fuente_id"] for a in top_ayudas if a.get("fuente_id")]
     )
     respuesta = generar_respuesta(perfil, resultados) if incluir_llm else None
-    checks = checks_basicos(caso, top_ayudas, respuesta)
+    paso, fallos, lineas = analizar_caso(caso, top_ayudas, respuesta)
+
+    tipo = "bloqueante" if caso.bloqueante else "objetivo"
+    if paso:
+        veredicto = "PASS"
+    else:
+        veredicto = "FAIL" if caso.bloqueante else "FAIL (objetivo, no bloquea)"
 
     partes = [
-        f"## {caso.id}",
+        f"## {caso.id} - {veredicto}",
         "",
         f"**Pregunta:** {caso.pregunta}",
-        f"**Filtro:** comunidad=`{caso.comunidad}` categoria=`{caso.categoria}`",
+        f"**Filtro:** comunidad=`{caso.comunidad}` categoria=`{caso.categoria}` ({tipo})",
         f"**Modo busqueda:** `{modo}`",
     ]
     if caso.notas:
         partes.append(f"**Notas:** {caso.notas}")
     partes.extend(["", "### Checks", ""])
-    partes.extend(f"- {c}" for c in checks)
+    partes.extend(f"- {c}" for c in lineas)
 
     partes.extend(["", "### Top bruto", ""])
     for resultado in resultados[: min(k, 8)]:
@@ -281,7 +332,7 @@ def render_caso(
     else:
         partes.append("_Omitida con `--sin-llm`._")
 
-    return "\n".join(partes), checks
+    return "\n".join(partes), paso, fallos
 
 
 def elegir_casos(ids: list[str] | None, max_casos: int | None) -> list[CasoEval]:
@@ -330,20 +381,44 @@ def main() -> None:
     ]
 
     secciones = []
-    resumen_terminal = []
+    resultados_casos = []  # (caso, paso, fallos)
     for caso in casos:
         print(f"[eval] {caso.id}...")
-        seccion, checks = render_caso(caso, args.k, incluir_llm)
+        seccion, paso, fallos = render_caso(caso, args.k, incluir_llm)
         secciones.append(seccion)
-        resumen_terminal.append(f"- {caso.id}: " + " | ".join(checks[:3]))
+        resultados_casos.append((caso, paso, fallos))
 
     informe = "\n".join(cabecera + secciones) + "\n"
     args.salida.write_text(informe, encoding="utf-8")
 
-    print("\nResumen:")
-    for linea in resumen_terminal:
-        print(linea)
+    # Veredicto: solo los casos bloqueantes que fallan tumban la bateria.
+    bloqueantes = [(c, p, f) for c, p, f in resultados_casos if c.bloqueante]
+    objetivos = [(c, p, f) for c, p, f in resultados_casos if not c.bloqueante]
+    fallos_bloqueantes = [c.id for c, p, _ in bloqueantes if not p]
+
+    print("\n=== Resumen ===")
+    print("Bloqueantes (regresion si fallan):")
+    for c, p, f in bloqueantes:
+        marca = "PASS" if p else "FAIL"
+        extra = "" if p else f" -> {f}"
+        print(f"  [{marca}] {c.id}{extra}")
+    if objetivos:
+        print("Objetivos (huecos conocidos, no bloquean):")
+        for c, p, f in objetivos:
+            marca = "PASS" if p else "pendiente"
+            extra = "" if p else f" -> {f}"
+            print(f"  [{marca}] {c.id}{extra}")
+
     print(f"\nInforme escrito en: {args.salida}")
+
+    if fallos_bloqueantes:
+        print(f"\nRESULTADO: ROJO — fallan {len(fallos_bloqueantes)} bloqueantes: {fallos_bloqueantes}")
+        raise SystemExit(1)
+    pendientes = sum(1 for c, p, _ in objetivos if not p)
+    print(
+        f"\nRESULTADO: VERDE — {len(bloqueantes)}/{len(bloqueantes)} bloqueantes PASS"
+        + (f" · {pendientes} objetivos pendientes" if pendientes else "")
+    )
 
 
 if __name__ == "__main__":

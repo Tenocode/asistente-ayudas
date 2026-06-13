@@ -69,7 +69,12 @@ La Rioja) y vivienda/formación finas (5 cada una). El nicho de arranque era
      `top_estados` y comprueba que las cerradas del top lleven aviso. Validado: en
      `autonomo_larioja`, Consolidación (cerró 14-may-2026) baja a 2ª, Inversiones (abierta)
      sube a 1ª, y la respuesta incluye el aviso. Sin regresión en el resto.
-2. **Ampliar el evaluador con cuantías esperadas por caso** (golden set) → red de regresión.
+2. **Golden set en el evaluador — HECHO (2026-06-13).** Cada `CasoEval` declara las `cuantias`
+   que la respuesta DEBE citar (autónomo → `2.700`/`2.100`, comercio → `25%`/`35%`, vivienda →
+   `250 euros`, pyme → `70 euros`) y se marca como `bloqueante` (regresión = rojo) u objetivo
+   (hueco conocido que se mide pero no bloquea). El evaluador da veredicto **PASS/FAIL** con
+   **código de salida** (≠0 si falla un bloqueante), usable como gate. Verificado con LLM:
+   4/4 bloqueantes PASS (cuantías + aviso de cerrada incluidos).
 3. **Conector carnet La Rioja (IRJ / Gobierno de La Rioja)** → cerrar la categoría vacía.
 4. **Limpiar boilerplate de ADER + reindexar PDFs degradados** (palabras pegadas, € perdidos)
    → mejor recall y recuperar cuantías; permite quitar el parche de `k=30`.
@@ -81,12 +86,19 @@ es barato e indexable. Por tanto **el cuello de botella para ser "vendible" son 
 
 ### Disciplina de pruebas (testing continuo)
 
-`src/evaluar_rag.py` es el "CI" del proyecto. Regla: **ningún cambio se da por bueno sin la
-batería verde**. Tras cada cambio en ranking, extractor, prompt o datos, ejecutar
-`python src/evaluar_rag.py --sin-llm` y comparar el último informe; modo con LLM solo en casos
-ya estables. Al cerrar una mejora, **añadir/actualizar el caso** con sus cuantías esperadas
-para blindarlo. Workflow ligero (eval como gate + golden set + plantilla de conector); CI/CD
-pesado todavía es prematuro.
+`src/evaluar_rag.py` es el "CI" del proyecto y ahora da **veredicto PASS/FAIL** con código de
+salida (≠0 si falla un caso bloqueante), no solo un informe. Regla: **ningún cambio se da por
+bueno sin la batería verde**.
+
+- `python src/evaluar_rag.py --sin-llm` → rápido (sin Ollama). Verifica ranking, cobertura,
+  URLs y vigencia. Ejecutar tras **cada** cambio.
+- `python src/evaluar_rag.py` → además verifica las `cuantias` del golden set en la respuesta
+  del LLM y el aviso de plazo cerrado. Ejecutar antes de cada commit.
+
+Cada caso es **bloqueante** (su fallo = regresión = batería en rojo) u **objetivo** (hueco
+conocido: se mide pero no bloquea). Al cerrar una mejora, **añadir/actualizar el caso** con sus
+cuantías esperadas para congelarlo. Así una cifra que hoy funciona no se puede perder en
+silencio mañana. Workflow ligero (gate + golden set); CI/CD pesado todavía es prematuro.
 
 ---
 
