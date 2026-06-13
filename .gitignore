@@ -37,6 +37,8 @@ data/candidatos_bdns.jsonl
 data/candidatos_*.jsonl
 data/test_*.jsonl
 data/evaluaciones/*.md
+data/revision_bdns_larioja.md
+data/_bdns_universo_larioja.json
 debug.log
 
 # Jupyter

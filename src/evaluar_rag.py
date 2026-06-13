@@ -124,6 +124,20 @@ CASOS: tuple[CasoEval, ...] = (
         notas="Hueco cubierto con la ficha oficial del IRJ (cerrada; suele ser anual). "
         "Antes caia a Extremadura por falta de fuente riojana.",
     ),
+    CasoEval(
+        id="dependencia_larioja",
+        pregunta="Tengo que cuidar a un familiar dependiente en casa, hay ayudas en La Rioja?",
+        comunidad="larioja",
+        comunidad_raw="La Rioja",
+        categoria="dependencia",
+        esperadas=("dependencia",),
+        # Objetivo (no bloqueante): hueco que estaba a 0 y se cerro con el barrido
+        # BDNS region-first (cuidadores/empleados de hogar, transporte mayores 65).
+        # No es bloqueante porque depende de haber corrido la ingesta BDNS de huecos;
+        # promover a bloqueante cuando esa ingesta sea parte del pipeline estandar.
+        bloqueante=False,
+        notas="Cobertura nueva 2026-06-13 via BDNS --por-region. Antes dependencia=0 en La Rioja.",
+    ),
 )
 
 

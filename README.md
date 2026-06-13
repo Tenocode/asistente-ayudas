@@ -24,15 +24,23 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 | Interfaz web (`src/api.py` + `src/static/index.html`) | ✅ FastAPI + chat. Arrancar: `python src/api.py` |
 | Widget embebible (`src/static/widget.html` + `src/static/embed.js`) | 🧪 MVP técnico; pendiente de validar |
 | Ingesta multi-fuente (`src/ingesta/`) | ✅ Pipeline JSONL + adaptadores PDF/HTML/bdns_api |
-| **BDNS API** (`src/ingesta/fuentes/bdns.py`) | ✅ Descubrimiento automatico de convocatorias |
+| **BDNS API** (`src/ingesta/fuentes/bdns.py`) | ✅ Descubrimiento por keyword **y por región** (`--por-region`: barre TODO La Rioja) |
 | **ADER** (`src/ingesta/fuentes/ader.py`) | ✅ Descubridor inicial de ayudas de negocio/empresa en La Rioja |
 | Evaluacion RAG (`src/evaluar_rag.py`) | ✅ Golden set con veredicto PASS/FAIL y código de salida (gate) |
 | Vigencia (`src/db/vigencia.py`) | ✅ Marca abierta/cerrada/desconocida; las cerradas bajan en ranking y avisan |
 | Pipeline de actualización completo | 🔄 En curso (Fase 5) |
 
-Datos locales comprobados el 2026-06-13: **108 fuentes** y **1374 fragmentos** en Postgres
-(**79 PDF + 29 HTML**). Vigencia: 28 abiertas, 23 cerradas, 57 desconocidas. El conector BDNS
-descubre candidatos y descarga documentos, pero no todos están indexados todavía en la base local.
+Datos locales comprobados el 2026-06-13 (tras la ingesta BDNS region-first): **186 fuentes**
+y **1927 fragmentos** en Postgres (**157 PDF + 29 HTML**). Vigencia: 41 abiertas, 44 cerradas,
+101 desconocidas. La Rioja pasa de 47 a **125 fuentes**.
+
+Hallazgo y acción 2026-06-13 (barrido region-first): el universo riojano de BDNS (2025–2026)
+es de **1.613 convocatorias**, no las ~190 que veía el método por keyword. Tras descartar ruido
+administrativo (867) e inter-administrativas (29), colapsar ediciones anuales y clasificar,
+quedan **209 ayudas únicas en categorías diana**. Se indexaron las **84 de categorías con hueco**
+(dependencia, vivienda, movilidad, formación) → **78 fuentes nuevas**, con el evaluador como gate
+(**5/5 bloqueantes PASS**, sin regresión). El resto (empleo/cultura y lo no clasificado) queda en
+`data/revision_bdns_larioja.md` para revisión. Ver punto 5 de la hoja de ruta.
 
 ---
 
@@ -43,13 +51,14 @@ descubre candidatos y descarga documentos, pero no todos están indexados todav�
 | Ámbito | Total | Desglose |
 |---|---|---|
 | estatal | 56 | formación 16 · empleo 12 · movilidad 10 · cultura 9 · dependencia 5 · vivienda 4 · **carnet 0** |
-| La Rioja | 47 | **empleo 34** · formación 5 · vivienda 5 · **carnet 1 (IRJ)** · cultura 1 · movilidad 1 · **dependencia 0** |
+| La Rioja | 125 | formación 46 · empleo 34 · movilidad 22 · vivienda 18 · **dependencia 3** · carnet 1 (IRJ) · cultura 1 |
 | otras CCAA | 5 | solo carnet (Murcia, Andalucía, Extremadura×2, Castilla y León) |
 
-Lectura: la **fortaleza** es La Rioja empleo/empresa (31, todo ADER). Carnet La Rioja ya
-cubierto con la ficha oficial del IRJ (ver punto 3 de la hoja de ruta). Quedan **huecos**:
-dependencia (0 en La Rioja) y vivienda/formación finas (5 cada una). El nicho de arranque era
-*vivienda · carnet · formación · empleo*: empleo ✅, carnet ✅, vivienda/formación 🟡.
+Lectura (actualizada 2026-06-13 tras BDNS region-first): La Rioja salta de 47 a **125 fuentes**.
+Los huecos del nicho de arranque (*vivienda · carnet · formación · empleo*) quedan **cubiertos**:
+formación 5→46, vivienda 5→18, movilidad 1→22, y **dependencia 0→3 (cero roto)**. Empleo y carnet
+ya estaban. Pendiente afinar: emprendimiento/ayudas municipales de Logroño (apenas en BDNS) y
+profundizar dependencia/cultura (aún finas).
 
 ### Hoja de ruta priorizada
 
@@ -94,14 +103,53 @@ dependencia (0 en La Rioja) y vivienda/formación finas (5 cada una). El nicho d
    mayoría eran **convenios/adendas administrativos** (no ayudas a ciudadanos) → se añadieron a
    la BLACKLIST del conector. Se indexaron solo las 3 genuinas: Concurso Emprendedores de Alfaro,
    CS Emprendimiento (cooperativas) y Bases de contratación de menores de 30 / Garantía Juvenil.
-   Conclusión: la veta de BDNS para La Rioja está prácticamente agotada; lo que falta
-   (dependencia, ayudas reales de emprendimiento de Logroño) necesita portales directos, como
-   se hizo con el carnet del IRJ.
+   Conclusión ~~la veta de BDNS para La Rioja está prácticamente agotada~~ **CORREGIDA en el
+   punto 5**: esa conclusión era un **artefacto del método por keyword**, no del dato. El
+   barrido por región (punto 5) demostró que el universo riojano de BDNS es mucho mayor.
+5. **Barrido BDNS region-first de La Rioja — HECHO (2026-06-13).** Corrige el punto 4. El
+   método por keyword solo veía convocatorias cuya *descripción* casaba un término, dejando
+   fuera el grueso del universo riojano. La API BDNS **sí filtra por región** con el parámetro
+   `regiones` (plural): La Rioja son los ids **19 (ES23)** y **20 (ES230)**, que no se solapan,
+   así que hay que unir ambos y deduplicar. Nuevo modo `--por-region` en `bdns.py` que:
+   (1) enumera TODO el universo riojano (**1.613** convocatorias 2025–2026, deduplicadas);
+   (2) descarta ruido administrativo con una **blacklist ampliada** (nominativas, convenios,
+   premios, patrocinios, procesos selectivos…) → **867** fuera; (3) las keywords pasan de filtro
+   a **clasificador** por inicio de palabra (`\b`, para que "aval" no clasifique "carn**aval**"
+   ni "cultura" clasifique "agri**cultura**") → **275** clasificadas {dependencia 7, vivienda 28,
+   movilidad 27, formación 49, empleo 107, cultura 57}; (4) lo no clasificado (**471**) **no se
+   tira**: va a un informe de revisión (`data/revision_bdns_larioja.md`). Hallazgo clave:
+   **rompe el cero de dependencia** (ayudas a contratación de cuidadores/empleados de hogar,
+   descuentos de transporte para mayores de 65) y aflora vivienda/formación/movilidad que el
+   keyword no veía (bono infantil, libros de texto, comedor, becas de permanencia UR,
+   rehabilitación de edificios, bicicletas, carné de transporte de estudiantes). Salida:
+   `data/candidatos_bdns.jsonl` (enriquecidos, ordenados por prioridad de hueco).
+   - **Profundización + indexado — HECHO (noche 2026-06-13).** Sobre el barrido base se añadió:
+     (a) **caché del universo** (`--cache`/`--usar-cache`) para iterar la clasificación sin
+     re-barrer la API; (b) **filtro inter-administrativo**: ayudas cuyo beneficiario es otra
+     administración (a municipios/EELL) se apartan a su propio cubo del informe (29), no
+     ensucian candidatos; (c) **dedup de ediciones anuales**: la misma ayuda reconvocada cada
+     año (nombre igual salvo el año) se colapsa quedándose con la más reciente (63 colapsadas);
+     (d) **tests deterministas** del conector en `tests/test_bdns.py` (clasificador, blacklist,
+     inter-admin, ámbito, dedup) — congelan regresiones como "carnaval→vivienda"; (e) revisión
+     del bucket *sin clasificar*: era casi todo agrario/medioambiente/entidades (fuera de nicho,
+     correcto que quede en revisión); se añadieron al clasificador `transporte escolar` y el
+     stem `discapacit` (antes "discapacidad" no casaba "discapacit**ados**"). Resultado del
+     barrido limpio: universo 1.613 → 867 descartadas + 29 inter-admin + **209 clasificadas
+     únicas** (tras colapsar 63) + 445 sin clasificar. **Se indexaron las 84 de categorías con
+     hueco** (dependencia/vivienda/movilidad/formación) con `--min-palabras 120` → **78 fuentes
+     nuevas** (3 ya existían, 3 con texto insuficiente). Se corrió `vigencia.py` y el evaluador
+     como **gate**: **5/5 bloqueantes PASS**, sin regresión (rollback por `url_oficial` preparado
+     por si fallaba). Nuevo caso `dependencia_larioja` en el golden set (objetivo) que congela el
+     cero roto. Empleo (79) y cultura (46) NO se indexaron (empleo ya lo cubre ADER; cultura es
+     ruidosa); quedan en el informe por si se quieren rescatar.
 6. **Limpiar boilerplate de ADER + reindexar PDFs degradados** (palabras pegadas, € perdidos)
    → mejor recall y recuperar cuantías; permite quitar el parche de `k=30`.
 7. **Filtro por edad/perfil** (Fase 3): muchas ayudas son ≤35 años; hoy no filtramos por edad.
-8. **Dependencia La Rioja y emprendimiento real de Logroño**: BDNS no los tiene; requieren
-   scraping directo del portal de Servicios Sociales / Ayuntamiento de Logroño (como el IRJ).
+8. **Emprendimiento/ayudas municipales de Logroño**: el barrido region-first (punto 5) **sí**
+   encontró dependencia autonómica de La Rioja en BDNS (cuidadores, transporte de mayores),
+   corrigiendo el supuesto anterior de que BDNS no la tenía. Lo que sigue flojo es el
+   emprendimiento y las ayudas municipales de Logroño, que apenas registran en BDNS y
+   probablemente requieran scraping directo del Ayuntamiento (como se hizo con el IRJ).
 
 Diagnóstico de fondo: la latencia es del MODELO (fija) y el retrieval (lo que crece con la BD)
 es barato e indexable. Por tanto **el cuello de botella para ser "vendible" son los DATOS**
@@ -117,6 +165,9 @@ bueno sin la batería verde**.
   URLs y vigencia. Ejecutar tras **cada** cambio.
 - `python src/evaluar_rag.py` → además verifica las `cuantias` del golden set en la respuesta
   del LLM y el aviso de plazo cerrado. Ejecutar antes de cada commit.
+- `python tests/test_bdns.py` → tests deterministas del conector BDNS (clasificador, blacklist,
+  inter-admin, ámbito, dedup de ediciones). Sin red ni base. Veredicto VERDE/ROJO con código de
+  salida. Ejecutar tras tocar `bdns.py`. Congela regresiones tipo "carnaval→vivienda".
 
 Cada caso es **bloqueante** (su fallo = regresión = batería en rojo) u **objetivo** (hueco
 conocido: se mide pero no bloquea). Al cerrar una mejora, **añadir/actualizar el caso** con sus
@@ -127,17 +178,18 @@ silencio mañana. Workflow ligero (gate + golden set); CI/CD pesado todavía es 
 
 ## Siguiente paso concreto — Fase 5: pipeline de actualización
 
-El descubrimiento automático de convocatorias vía BDNS ya funciona. Lo que falta:
+El descubrimiento automático de convocatorias vía BDNS ya funciona, ahora por **keyword y por
+región** (cobertura completa de La Rioja, ver punto 5). Hecho ya: barrido region-first, vigencia
+(marca cerradas), tests del conector, e indexado de las categorías con hueco. Lo que falta:
 
-- Marcar convocatorias con plazo vencido como cerradas
-- Programar el script BDNS para que se ejecute periódicamente (semanal/mensual)
-- Consolidar conectores por fuente oficial: ADER primero, despues IRJ, Gobierno de La Rioja
-  y Logroño
-- Fuentes no cubiertas por BDNS: Gobierno de La Rioja (carnet conducir, emancipación juvenil)
-  requieren scraping directo de su portal de subvenciones
-- Cobertura La Rioja: el conector BDNS ya busca términos ampliados de vivienda, carnet,
-  autónomos, empresas, comercio, pymes y emprendimiento. En el chat, esas consultas se
-  agrupan provisionalmente bajo la categoría `empleo`.
+- **Programar** el barrido BDNS para que se ejecute periódicamente (semanal/mensual) y reindexe
+  solo lo nuevo (incremental, sin TRUNCATE) — pieza central de la Fase 5.
+- **Indexar empleo/cultura** del barrido region-first si se decide (hoy solo se metieron las de
+  hueco: dependencia/vivienda/movilidad/formación). Empleo ya lo cubre ADER en gran parte.
+- Consolidar conectores por fuente oficial: ADER, IRJ, Gobierno de La Rioja, Logroño.
+- Fuentes no cubiertas por BDNS: emprendimiento y ayudas municipales de **Logroño** (apenas
+  registran en BDNS) requieren scraping directo de su portal.
+- En el chat, las consultas de negocio se agrupan provisionalmente bajo la categoría `empleo`.
 
 Modelo de embeddings: `paraphrase-multilingual-MiniLM-L12-v2` (dim 384, multilingüe).
 
@@ -260,6 +312,8 @@ asistente-ayudas/
     candidatos.example.jsonl # ejemplo versionado de candidato manual
     candidatos.jsonl      # cola local de fuentes candidatas (ignorado por git)
     candidatos_bdns.jsonl # salida local del conector BDNS (ignorado por git)
+    revision_bdns_larioja.md # informe del barrido --por-region (ignorado por git)
+    _bdns_universo_larioja.json # cache del universo crudo BDNS (ignorado por git)
     candidatos_ader.jsonl # salida local del conector ADER (ignorado por git)
   src/
     db/
@@ -274,7 +328,7 @@ asistente-ayudas/
         pdf.py            # extractor PDF por URL
         html.py           # extractor HTML/web por URL
       fuentes/
-        bdns.py           # conector BDNS: busca, filtra y genera candidatos_bdns.jsonl
+        bdns.py           # conector BDNS: keyword o --por-region (barre todo La Rioja) -> candidatos_bdns.jsonl
         ader.py           # conector ADER: descubre paginas oficiales de ayudas ADER
     rag/
       buscar.py           # búsqueda semántica con pgvector + JOIN a fuentes
@@ -288,6 +342,8 @@ asistente-ayudas/
     evaluar_rag.py        # CLI: bateria de evaluacion RAG reproducible
     indexar.py            # CLI: trocea + embeddings + inserta todos los PDFs
     ingestar_fuentes.py   # CLI: extrae e indexa candidatos de candidatos.jsonl
+  tests/
+    test_bdns.py          # tests deterministas del conector BDNS (sin red/base)
   docker-compose.yml      # Postgres 16 + pgvector
   requirements.txt
   CLAUDE.md
@@ -498,6 +554,43 @@ python src/ingestar_fuentes.py --candidatos data/candidatos_bdns.jsonl --indexar
 Nota operativa: para barridos autonómicos, `--max 5` suele ser demasiado bajo. En pruebas,
 La Rioja no aparecía en empleo/empresa con `--max 5`, pero sí aparecieron ayudas ADER y
 emprendimiento con `--max 100`.
+
+### Barrido REGION-FIRST de La Rioja (recomendado para cobertura completa)
+
+El modo por keyword de arriba solo encuentra convocatorias cuya **descripción** contiene un
+término buscado, así que se deja fuera el grueso de La Rioja. El modo `--por-region` le da la
+vuelta: barre **todo** el universo riojano filtrando por región en la API (`regiones=[19,20]`,
+ES23 + ES230) y reparte cada convocatoria en cubos: **descartada** (ruido administrativo:
+nominativas, convenios, premios, procesos selectivos…), **inter-administrativa** (beneficiario =
+otra administración, a municipios/EELL), **clasificada** (casa una categoría diana; se colapsan
+ediciones anuales quedándose con la más reciente) o **sin clasificar** (al informe, no se tira).
+Es la forma de "no dejarnos nada".
+
+```powershell
+# Barrido completo de La Rioja desde 2025 (genera JSONL + informe, NO indexa)
+python src/ingesta/fuentes/bdns.py --por-region --desde 2025-01-01 --max 300
+
+# Iterar la clasificación sin re-barrer la API (usa el universo cacheado):
+python src/ingesta/fuentes/bdns.py --por-region --desde 2025-01-01 --usar-cache --max 300
+```
+
+`--max` limita cuántas clasificadas se **enriquecen** (piden detalle a la API); con prioridad de
+hueco (dependencia, vivienda, movilidad, formación primero). `--cache` fija dónde se guarda el
+universo crudo y `--usar-cache` lo recarga del disco (ojo: el cache ignora `--desde`/`--hasta`,
+bórralo si cambias el rango). Produce dos ficheros (ignorados por git, se regeneran):
+
+- `data/candidatos_bdns.jsonl`: ayudas clasificadas, deduplicadas y enriquecidas (importe/plazo/PDF).
+- `data/revision_bdns_larioja.md`: informe legible con lo que NO entró en el JSONL — inter-administrativas,
+  clasificadas fuera del tope `--max` y las **sin clasificar** (mayoría agrario/medioambiente/entidades,
+  fuera del nicho), por si alguna merece rescatarse a mano a `data/candidatos.jsonl`.
+
+Flujo recomendado: barrido → **revisar** el JSONL y el informe → indexar lo bueno. Para indexar solo
+las categorías con hueco (lo que se hizo el 2026-06-13), filtra el JSONL a `dependencia/vivienda/
+movilidad/formacion` antes de indexar y usa un bar de calidad estricto:
+
+```powershell
+python src/ingestar_fuentes.py --candidatos data/candidatos_bdns.jsonl --indexar --min-palabras 120
+```
 
 ## Descubrir ayudas desde ADER
 
