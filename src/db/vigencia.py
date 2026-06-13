@@ -104,6 +104,17 @@ def extraer_fecha_fin(texto: str) -> date | None:
     return max(candidatas)
 
 
+# Señales textuales de que el plazo ya esta cerrado, aunque no haya fecha
+# parseable (p.ej. las fichas de tramite del Gobierno de La Rioja lo dicen
+# explicitamente: "Plazo: Fuera de plazo de solicitud").
+_SENALES_CERRADA = ("fuera de plazo",)
+
+
+def texto_indica_cerrada(texto: str) -> bool:
+    n = _normalizar(texto or "")
+    return any(s in n for s in _SENALES_CERRADA)
+
+
 def estado_desde_fecha(fecha_fin: date | None, hoy: date | None = None) -> str:
     if fecha_fin is None:
         return "desconocida"
@@ -131,7 +142,14 @@ def backfill() -> dict:
             filas = cur.fetchall()
             for fuente_id, texto in filas:
                 fecha_fin = extraer_fecha_fin(texto or "")
-                estado = estado_desde_fecha(fecha_fin, hoy)
+                if texto_indica_cerrada(texto):
+                    estado = "cerrada"
+                    # La senal textual es autoritativa; si la fecha parseada no es
+                    # pasada, contradice el "fuera de plazo" y es mejor no mostrarla.
+                    if fecha_fin is not None and fecha_fin >= hoy:
+                        fecha_fin = None
+                else:
+                    estado = estado_desde_fecha(fecha_fin, hoy)
                 reparto[estado] += 1
                 cur.execute(
                     "UPDATE fuentes SET fecha_fin = %s, estado = %s WHERE id = %s",

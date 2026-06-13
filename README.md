@@ -42,13 +42,13 @@ pero no todos están indexados todavía en la base local.
 | Ámbito | Total | Desglose |
 |---|---|---|
 | estatal | 56 | formación 16 · empleo 12 · movilidad 10 · cultura 9 · dependencia 5 · vivienda 4 · **carnet 0** |
-| La Rioja | 43 | **empleo 31** · formación 5 · vivienda 5 · cultura 1 · movilidad 1 · **carnet 0 · dependencia 0** |
+| La Rioja | 44 | **empleo 31** · formación 5 · vivienda 5 · **carnet 1 (IRJ, 2026-06-13)** · cultura 1 · movilidad 1 · **dependencia 0** |
 | otras CCAA | 5 | solo carnet (Murcia, Andalucía, Extremadura×2, Castilla y León) |
 
-Lectura: la **fortaleza** es La Rioja empleo/empresa (31, todo ADER). Los **huecos** son
-carnet (0 en La Rioja y estatal, pese a ser categoría de lanzamiento), dependencia (0 en
-La Rioja) y vivienda/formación finas (5 cada una). El nicho de arranque era
-*vivienda · carnet · formación · empleo*: empleo ✅, vivienda/formación 🟡, **carnet 🔴 vacío**.
+Lectura: la **fortaleza** es La Rioja empleo/empresa (31, todo ADER). Carnet La Rioja ya
+cubierto con la ficha oficial del IRJ (ver punto 3 de la hoja de ruta). Quedan **huecos**:
+dependencia (0 en La Rioja) y vivienda/formación finas (5 cada una). El nicho de arranque era
+*vivienda · carnet · formación · empleo*: empleo ✅, carnet ✅, vivienda/formación 🟡.
 
 ### Hoja de ruta priorizada
 
@@ -75,7 +75,16 @@ La Rioja) y vivienda/formación finas (5 cada una). El nicho de arranque era
    (hueco conocido que se mide pero no bloquea). El evaluador da veredicto **PASS/FAIL** con
    **código de salida** (≠0 si falla un bloqueante), usable como gate. Verificado con LLM:
    4/4 bloqueantes PASS (cuantías + aviso de cerrada incluidos).
-3. **Conector carnet La Rioja (IRJ / Gobierno de La Rioja)** → cerrar la categoría vacía.
+3. **Carnet La Rioja — HECHO (2026-06-13).** Verificado que BDNS NO tiene carnet de La Rioja
+   (ni autonómica ni local). La Rioja sí da la ayuda vía **IRJ** (dentro de "emancipación
+   juvenil en materia de formación"). Se indexó la ficha oficial del trámite
+   (`web.larioja.org/oficina-electronica/tramite?n=24664`) como `categoria=carnet`,
+   `ambito=larioja` (beneficiarios 18-35 empadronados, qué cubre, periodo). La página dice
+   "Fuera de plazo de solicitud" → se añadió esa señal textual al detector de vigencia
+   (`vigencia.py`) para marcarla `cerrada` aunque no haya fecha parseable. Ahora
+   `carnet_conducir` devuelve la fuente riojana (antes caía a Extremadura) y es caso
+   **bloqueante** en el golden set. La ficha no publica importe por persona (está en el BOR),
+   así que la respuesta lo dice honestamente en vez de inventarlo.
 4. **Limpiar boilerplate de ADER + reindexar PDFs degradados** (palabras pegadas, € perdidos)
    → mejor recall y recuperar cuantías; permite quitar el parche de `k=30`.
 5. **Filtro por edad/perfil** (Fase 3): muchas ayudas son ≤35 años; hoy no filtramos por edad.

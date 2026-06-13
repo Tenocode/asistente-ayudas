@@ -116,10 +116,13 @@ CASOS: tuple[CasoEval, ...] = (
         comunidad="larioja",
         comunidad_raw="La Rioja",
         categoria="carnet",
-        esperadas=("carnet", "conducir"),
-        cuantias=("1.300", "1.500"),
-        bloqueante=False,
-        notas="Objetivo: hueco de cobertura IRJ/Gobierno La Rioja (0 ayudas de carnet en La Rioja).",
+        esperadas=("conducir", "La Rioja"),
+        # La ficha oficial del IRJ no publica importe por persona (esta en las
+        # bases del BOR); no exigimos cuantia para no forzar una invencion.
+        cuantias=(),
+        bloqueante=True,
+        notas="Hueco cubierto con la ficha oficial del IRJ (cerrada; suele ser anual). "
+        "Antes caia a Extremadura por falta de fuente riojana.",
     ),
 )
 
