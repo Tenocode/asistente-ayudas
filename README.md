@@ -144,8 +144,35 @@ profundizar dependencia/cultura (aún finas).
      por si fallaba). Nuevo caso `dependencia_larioja` en el golden set (objetivo) que congela el
      cero roto. Empleo (79) y cultura (46) NO se indexaron (empleo ya lo cubre ADER; cultura es
      ruidosa); quedan en el informe por si se quieren rescatar.
-6. **Limpiar boilerplate de ADER + reindexar PDFs degradados** (palabras pegadas, € perdidos)
-   → mejor recall y recuperar cuantías; permite quitar el parche de `k=30`.
+6. **Calidad de extracción de texto (palabras pegadas) — PARCIAL (2026-06-15).**
+   - **Hallazgo:** el síntoma "palabras pegadas" (`cuantía<>de<>250<>euros`, fechas tipo
+     `1deseptiembrede2025`) NO era cosa de `pypdf`. Se probó **PyMuPDF (fitz)** como alternativa y
+     se descartó: A/B sobre el corpus real da empate o ligeramente peor (control chars, tokens-basura)
+     y texto **idéntico** en la única cuantía del golden set respaldada por PDF ("250 euros" del
+     alquiler joven). El € que "se perdía" era cómo lo pintaba la consola de Windows, no la extracción.
+     PyMuPDF solo gana en PDFs difíciles (escaneados/columnas), que apenas tenemos. **Veredicto:
+     seguir con `pypdf`; no reabrir esto salvo que entren PDFs escaneados.**
+   - **Causa real = U+FFFF.** 5 PDFs de juventud/vivienda de La Rioja (el nicho) y alguna ficha
+     codifican el **espacio como U+FFFF** (carácter de reemplazo). Eso pega las palabras y, peor,
+     **rompe el troceo**: `trocear()` parte por espacios, así que un bloque pegado contaba como UNA
+     palabra y los fragmentos salían sobredimensionados (el alquiler joven tenía 16 fragmentos en vez
+     de 34). Lo sufren pypdf y fitz por igual.
+   - **Arreglo:** normalizar `U+FFFF → espacio` en origen (`pdf.py`, `trocear.py`, `html.py`, donde
+     ya se limpiaba `\x00`) para que las ingestas nuevas salgan limpias, + reparación en sitio del
+     corpus ya indexado con `src/db/reparar_uffff.py` (re-extrae/limpia, re-trocea, re-embebe solo las
+     fuentes afectadas; sin red, sin TRUNCATE, idempotente). Resultado: 9 fuentes reparadas, 0 U+FFFF
+     en BD, fragmentos bien dimensionados. Gate **5/5 bloqueantes PASS antes y después** (era mejora de
+     calidad/robustez, no un gate rojo: la 2ª copia limpia de "250 euros" ya lo salvaba).
+   - **Blindaje genérico (2026-06-15).** Se centralizó la limpieza en `src/ingesta/texto.py`
+     (`normalizar_texto`, usada por `pdf.py`, `trocear.py` y `html.py`): **NFKC** (ligaduras
+     ﬁ→fi, anchos completos, variantes de símbolos) + eliminación de caracteres de control (Cc)
+     + sustitución por espacio de uso privado / no asignados / U+FFFF / U+FFFD (Co/Cn/Cs). Así no
+     dependemos de listar glifo a glifo. Verificado que NFKC no rompe el matcher de cuantías
+     (`70 €/m²`→`70 €/m2` sigue casando "70 euros") y gate **5/5 PASS**. Aplica a ingestas nuevas;
+     el corpus ya cargado solo se reprocesaría con un reindexado (bajo valor: ya sin U+FFFF).
+   - **Pendiente:** limpiar boilerplate de ADER y revisar el parche de `k=30`. OCR de respaldo
+     (pytesseract) queda para cuando entren PDFs escaneados/cmap roto en el cuerpo (hoy la basura
+     de fuente rota está solo en márgenes, no afecta a las respuestas).
 7. **Filtro por edad/perfil** (Fase 3): muchas ayudas son ≤35 años; hoy no filtramos por edad.
 8. **Emprendimiento/ayudas municipales de Logroño**: el barrido region-first (punto 5) **sí**
    encontró dependencia autonómica de La Rioja en BDNS (cuidadores, transporte de mayores),
@@ -356,8 +383,10 @@ asistente-ayudas/
       init_db.py          # crea tablas `fuentes` + `fragmentos` (DROP + CREATE)
       vigencia.py         # marca fecha_fin/estado (abierta/cerrada/desconocida) leyendo el texto
       limpiar_ediciones.py # borra ediciones anuales obsoletas (dry-run / --aplicar)
+      reparar_uffff.py    # limpia el espacio U+FFFF de fuentes ya indexadas (re-trocea+re-embebe, sin red)
     ingesta/
       trocear.py          # extrae texto de PDFs y trocea en fragmentos ~500 palabras
+      texto.py            # normaliza símbolos (NFKC + control/uso-privado/U+FFFF→espacio) para PDF y HTML
       modelos.py          # tipos de datos: CandidatoFuente, FuenteExtraida
       pipeline.py         # lectura JSONL, detección de tipo y extracción
       indexar_fuente.py   # inserta una FuenteExtraida en Postgres (con dedup)

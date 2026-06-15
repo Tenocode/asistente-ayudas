@@ -7,6 +7,7 @@ import requests
 import urllib3
 
 from ingesta.modelos import CandidatoFuente, FuenteExtraida
+from ingesta.texto import normalizar_texto
 
 TIMEOUT = 30
 USER_AGENT = "asistente-ayudas/0.1 (+lectura de fuentes oficiales)"
@@ -42,6 +43,9 @@ class _TextoHTMLParser(HTMLParser):
 
     def texto(self) -> str:
         texto = unescape(" ".join(self._partes))
+        # Normaliza símbolos (NFKC, control, U+FFFF/uso-privado→espacio) antes de
+        # colapsar espacios; ver ingesta/texto.py.
+        texto = normalizar_texto(texto)
         texto = re.sub(r"[ \t\r\f\v]+", " ", texto)
         texto = re.sub(r"\n\s+", "\n", texto)
         texto = re.sub(r"\n{3,}", "\n\n", texto)

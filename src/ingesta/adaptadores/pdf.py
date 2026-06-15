@@ -4,6 +4,7 @@ import requests
 from pypdf import PdfReader
 
 from ingesta.modelos import CandidatoFuente, FuenteExtraida
+from ingesta.texto import normalizar_texto
 
 TIMEOUT = 30
 
@@ -15,7 +16,9 @@ def extraer_pdf(candidato: CandidatoFuente) -> FuenteExtraida:
 
     lector = PdfReader(BytesIO(respuesta.content))
     paginas = [pagina.extract_text() or "" for pagina in lector.pages]
-    texto = "\n".join(paginas).replace("\x00", "").strip()
+    # Normaliza símbolos (NFKC, control, U+FFFF/uso-privado→espacio) antes de
+    # trocear; ver ingesta/texto.py. Sin esto algunos PDFs pegan las palabras.
+    texto = normalizar_texto("\n".join(paginas)).strip()
 
     return FuenteExtraida(
         nombre=candidato.nombre,

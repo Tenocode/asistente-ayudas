@@ -2,6 +2,8 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from ingesta.texto import normalizar_texto
+
 # Tres niveles arriba desde src/ingesta/ → raíz del proyecto
 DIRECTORIO_PDFS = Path(__file__).parent.parent.parent / "data" / "convocatorias"
 TAMANO_FRAGMENTO = 500
@@ -11,8 +13,10 @@ SOLAPAMIENTO = 50
 def extraer_texto(ruta_pdf: Path) -> str:
     lector = PdfReader(ruta_pdf)
     paginas = [pagina.extract_text() or "" for pagina in lector.pages]
-    texto = "\n".join(paginas)
-    return texto.replace("\x00", "")
+    # Normaliza símbolos (NFKC, control, U+FFFF/uso-privado→espacio). Algunos PDFs
+    # (juventud/vivienda de La Rioja) usan U+FFFF como espacio, lo que pega las
+    # palabras y rompe el troceo.
+    return normalizar_texto("\n".join(paginas))
 
 
 def trocear(texto: str, tamano: int, solapamiento: int) -> list[str]:
