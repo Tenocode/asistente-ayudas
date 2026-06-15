@@ -1,12 +1,21 @@
 import re
 from html import unescape
 from html.parser import HTMLParser
+from urllib.parse import urlparse
 
 import requests
+import urllib3
 
 from ingesta.modelos import CandidatoFuente, FuenteExtraida
 
 TIMEOUT = 30
+USER_AGENT = "asistente-ayudas/0.1 (+lectura de fuentes oficiales)"
+
+# Hosts oficiales cuyo certificado TLS tiene la cadena mal configurada (no envian el
+# certificado intermedio), lo que hace fallar la verificacion de `requests` aunque el
+# navegador los abra sin problema. Para estas fuentes PUBLICAS y de SOLO LECTURA
+# aceptamos TLS sin verificar. Lista cerrada y explicita; no es un comodin global.
+HOSTS_TLS_NO_VERIFICABLE = {"www.irj.es", "irj.es"}
 
 
 class _TextoHTMLParser(HTMLParser):
@@ -46,7 +55,16 @@ def limpiar_html(html: str) -> str:
 
 
 def extraer_html(candidato: CandidatoFuente) -> FuenteExtraida:
-    respuesta = requests.get(candidato.url_oficial, timeout=TIMEOUT)
+    host = urlparse(candidato.url_oficial).netloc.lower()
+    verificar = host not in HOSTS_TLS_NO_VERIFICABLE
+    if not verificar:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    respuesta = requests.get(
+        candidato.url_oficial,
+        timeout=TIMEOUT,
+        headers={"User-Agent": USER_AGENT},
+        verify=verificar,
+    )
     respuesta.raise_for_status()
     respuesta.encoding = respuesta.encoding or respuesta.apparent_encoding
     texto = limpiar_html(respuesta.text)

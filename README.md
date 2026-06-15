@@ -26,13 +26,14 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 | Ingesta multi-fuente (`src/ingesta/`) | ✅ Pipeline JSONL + adaptadores PDF/HTML/bdns_api |
 | **BDNS API** (`src/ingesta/fuentes/bdns.py`) | ✅ Descubrimiento por keyword **y por región** (`--por-region`: barre TODO La Rioja) |
 | **ADER** (`src/ingesta/fuentes/ader.py`) | ✅ Descubridor inicial de ayudas de negocio/empresa en La Rioja |
+| **IRJ** (`src/ingesta/fuentes/irj.py`) | ✅ Ayudas a jóvenes (carné, emancipación, voluntariado, formación) que BDNS no cubre |
 | Evaluacion RAG (`src/evaluar_rag.py`) | ✅ Golden set con veredicto PASS/FAIL y código de salida (gate) |
 | Vigencia (`src/db/vigencia.py`) | ✅ Marca abierta/cerrada/desconocida; las cerradas bajan en ranking y avisan |
 | Pipeline de actualización completo | 🔄 En curso (Fase 5) |
 
-Datos locales comprobados el 2026-06-15 (tras la ingesta BDNS region-first y la limpieza de
-ediciones obsoletas): **184 fuentes** y **1899 fragmentos** en Postgres (**155 PDF + 29 HTML**).
-La Rioja pasa de 47 a ~123 fuentes.
+Datos locales comprobados el 2026-06-15 (tras la ingesta BDNS region-first, la limpieza de
+ediciones obsoletas y el conector IRJ): **192 fuentes** y **1912 fragmentos** en Postgres.
+La Rioja pasa de 47 a **131 fuentes**.
 
 Hallazgo y acción 2026-06-13 (barrido region-first): el universo riojano de BDNS (2025–2026)
 es de **1.613 convocatorias**, no las ~190 que veía el método por keyword. Tras descartar ruido
@@ -231,25 +232,27 @@ Modelo de embeddings: `paraphrase-multilingual-MiniLM-L12-v2` (dim 384, multilin
 Objetivo: cubrir La Rioja completa antes de escalar comunidad por comunidad. El orden de
 prioridad de fuentes debe ser:
 
-1. **BDNS / SNPSAP**: fuente transversal para convocatorias registradas por administraciones
-   públicas. Sirve para descubrir ayudas estatales, autonómicas y locales, y muchas veces
-   expone documentos descargables por API.
+1. **BDNS / SNPSAP** — ✅ **conector** (`bdns.py`, keyword + `--por-region`). Fuente transversal;
+   universo riojano entero enumerado, nicho indexado.
    - API/docs: `https://www.infosubvenciones.es/bdnstrans/doc/swagger`
-   - Portal: `https://www.infosubvenciones.es/bdnstrans/GE/es/index`
-2. **Gobierno de La Rioja / Oficina electrónica**: trámites y solicitudes oficiales.
+2. **Gobierno de La Rioja / Oficina electrónica** — 🟡 **parcial**: ~8 fichas sueltas indexadas a
+   mano; falta conector sistemático (mejor texto que el PDF de BDNS).
    - `https://web.larioja.org/oficina-electronica/`
-3. **Boletín Oficial de La Rioja (BOR)**: extractos, bases y convocatorias oficiales.
+3. **Boletín Oficial de La Rioja (BOR)** — 🟢 indirecto vía BDNS; prioridad baja.
    - `https://web.larioja.org/bor`
-4. **Instituto Riojano de la Juventud (IRJ)**: juventud, emancipación, carnet, formación.
+4. **Instituto Riojano de la Juventud (IRJ)** — ✅ **conector** (`irj.py`, 2026-06-15): carné,
+   emancipación, voluntariado, monitor/director, ayudas individuales. Lo que BDNS no cubre.
    - `https://www.irj.es/subvenciones`
-5. **ADER**: empresas, autónomos, emprendedores, comercio, innovación e inversión.
+5. **ADER** — ✅ **conector** (`ader.py`): empresas, autónomos, comercio, inversión.
    - `https://www.ader.es/ayudas/`
-6. **Ayuntamiento de Logroño**: subvenciones municipales por áreas.
-   - `https://logrono.es/subvenciones`
+6. **Ayuntamiento de Logroño** — ❌ **pendiente** (próximo): Bono Infantil municipal, acción social,
+   etc. BDNS solo tiene sus actos administrativos; las ayudas reales solo están en su portal.
    - `https://logrono.es/becas-y-subvenciones`
 
-Estrategia: BDNS primero para barrido automático; conectores específicos después para fuentes
-que BDNS no cubra bien o para enriquecer datos con páginas oficiales más claras.
+Estado de cobertura (2026-06-15): la fuente transversal (BDNS) y los conectores de nicho (ADER,
+IRJ) están. **Queda Logroño** (municipal) y, como mejora de calidad, un conector sistemático del
+portal del Gobierno de La Rioja. Estrategia: BDNS para barrido; conectores específicos para lo
+que BDNS no cubra bien o para enriquecer con fichas oficiales más claras.
 
 ---
 
@@ -358,10 +361,11 @@ asistente-ayudas/
       indexar_fuente.py   # inserta una FuenteExtraida en Postgres (con dedup)
       adaptadores/
         pdf.py            # extractor PDF por URL
-        html.py           # extractor HTML/web por URL
+        html.py           # extractor HTML/web por URL (TLS sin verificar solo para hosts con cert roto: irj.es)
       fuentes/
         bdns.py           # conector BDNS: keyword o --por-region (barre todo La Rioja) -> candidatos_bdns.jsonl
         ader.py           # conector ADER: descubre paginas oficiales de ayudas ADER
+        irj.py            # conector IRJ: ayudas a jovenes (carne, emancipacion, voluntariado, formacion)
     rag/
       buscar.py           # búsqueda semántica con pgvector + JOIN a fuentes
       chat.py             # perfilado de usuario + generación de respuesta LLM
@@ -697,6 +701,27 @@ orientativo una sola vez.
 Se mantiene el contexto por ayuda acotado para no disparar la latencia de Ollama local.
 La seccion `Importe` recibe mas margen de caracteres que el resto porque truncar cuantias
 provoca respuestas incompletas o numeros inventados.
+
+## Descubrir ayudas desde IRJ (Instituto Riojano de la Juventud)
+
+BDNS NO cubre bien las ayudas de juventud del IRJ (el carné de conducir ni aparece). El IRJ
+publica su catálogo en `irj.es/subvenciones`, que enlaza a las fichas oficiales del trámite en
+`larioja.org` (con beneficiarios/importe/plazo) y a páginas de contenido en `irj.es`. El conector
+descubre las ayudas **a jóvenes** (carné, emancipación, voluntariado, monitor/director de tiempo
+libre, carné joven, ayudas individuales) y descarta lo que va a ayuntamientos/asociaciones/consejos.
+
+```powershell
+python src/ingesta/fuentes/irj.py
+python src/ingestar_fuentes.py --candidatos data/candidatos_irj.jsonl            # probar extraccion
+python src/ingestar_fuentes.py --candidatos data/candidatos_irj.jsonl --indexar  # indexar
+```
+
+Nota técnica: `irj.es` tiene la **cadena TLS mal configurada** (no envía el certificado
+intermedio), así que `requests` la rechaza. El adaptador HTML acepta TLS **sin verificar solo
+para ese host** (lista cerrada `HOSTS_TLS_NO_VERIFICABLE` en `adaptadores/html.py`); el resto de
+fuentes sigue con verificación normal. Las fichas oficiales del trámite viven en `larioja.org`,
+que sí tiene TLS correcto. Validación local 2026-06-15: 9 candidatos, 0 errores; indexadas 8
+(el carné `n=24664` ya estaba). Gate completo 5/5 PASS.
 
 ## Ingesta manual multi-fuente
 
