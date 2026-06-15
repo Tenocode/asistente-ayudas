@@ -27,13 +27,14 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 | **BDNS API** (`src/ingesta/fuentes/bdns.py`) | ✅ Descubrimiento por keyword **y por región** (`--por-region`: barre TODO La Rioja) |
 | **ADER** (`src/ingesta/fuentes/ader.py`) | ✅ Descubridor inicial de ayudas de negocio/empresa en La Rioja |
 | **IRJ** (`src/ingesta/fuentes/irj.py`) | ✅ Ayudas a jóvenes (carné, emancipación, voluntariado, formación) que BDNS no cubre |
+| **Logroño** (`src/ingesta/fuentes/logrono.py`) | ✅ Ayudas municipales (Chiquibecas, libros, mayores 85, comercio) que BDNS no cubre |
 | Evaluacion RAG (`src/evaluar_rag.py`) | ✅ Golden set con veredicto PASS/FAIL y código de salida (gate) |
 | Vigencia (`src/db/vigencia.py`) | ✅ Marca abierta/cerrada/desconocida; las cerradas bajan en ranking y avisan |
 | Pipeline de actualización completo | 🔄 En curso (Fase 5) |
 
-Datos locales comprobados el 2026-06-15 (tras la ingesta BDNS region-first, la limpieza de
-ediciones obsoletas y el conector IRJ): **192 fuentes** y **1912 fragmentos** en Postgres.
-La Rioja pasa de 47 a **131 fuentes**.
+Datos locales comprobados el 2026-06-15 (tras BDNS region-first, limpieza de ediciones
+obsoletas y los conectores IRJ y Logroño): **217 fuentes** en Postgres. La Rioja pasa de
+47 a **156 fuentes**.
 
 Hallazgo y acción 2026-06-13 (barrido region-first): el universo riojano de BDNS (2025–2026)
 es de **1.613 convocatorias**, no las ~190 que veía el método por keyword. Tras descartar ruido
@@ -245,14 +246,15 @@ prioridad de fuentes debe ser:
    - `https://www.irj.es/subvenciones`
 5. **ADER** — ✅ **conector** (`ader.py`): empresas, autónomos, comercio, inversión.
    - `https://www.ader.es/ayudas/`
-6. **Ayuntamiento de Logroño** — ❌ **pendiente** (próximo): Bono Infantil municipal, acción social,
-   etc. BDNS solo tiene sus actos administrativos; las ayudas reales solo están en su portal.
+6. **Ayuntamiento de Logroño** — ✅ **conector** (`logrono.py`, 2026-06-15): Chiquibecas (educación
+   infantil), libros y material escolar, ayudas a mayores de 85, Erasmus municipal, comercio,
+   nuevas iniciativas económicas. BDNS solo tenía sus actos administrativos.
    - `https://logrono.es/becas-y-subvenciones`
 
 Estado de cobertura (2026-06-15): la fuente transversal (BDNS) y los conectores de nicho (ADER,
-IRJ) están. **Queda Logroño** (municipal) y, como mejora de calidad, un conector sistemático del
-portal del Gobierno de La Rioja. Estrategia: BDNS para barrido; conectores específicos para lo
-que BDNS no cubra bien o para enriquecer con fichas oficiales más claras.
+IRJ, Logroño) están. La Rioja queda razonablemente cubierta a nivel de **fuentes**. Mejora
+pendiente de calidad: un conector sistemático del portal del Gobierno de La Rioja (oficina
+electrónica) para enriquecer el texto de las autonómicas que en BDNS llegan como PDF degradado.
 
 ---
 
@@ -366,6 +368,7 @@ asistente-ayudas/
         bdns.py           # conector BDNS: keyword o --por-region (barre todo La Rioja) -> candidatos_bdns.jsonl
         ader.py           # conector ADER: descubre paginas oficiales de ayudas ADER
         irj.py            # conector IRJ: ayudas a jovenes (carne, emancipacion, voluntariado, formacion)
+        logrono.py        # conector Ayto Logrono: enumera+blacklist+clasifica ayudas municipales
     rag/
       buscar.py           # búsqueda semántica con pgvector + JOIN a fuentes
       chat.py             # perfilado de usuario + generación de respuesta LLM
@@ -722,6 +725,25 @@ para ese host** (lista cerrada `HOSTS_TLS_NO_VERIFICABLE` en `adaptadores/html.p
 fuentes sigue con verificación normal. Las fichas oficiales del trámite viven en `larioja.org`,
 que sí tiene TLS correcto. Validación local 2026-06-15: 9 candidatos, 0 errores; indexadas 8
 (el carné `n=24664` ya estaba). Gate completo 5/5 PASS.
+
+## Descubrir ayudas desde el Ayuntamiento de Logroño
+
+BDNS solo trae de Logroño sus actos administrativos ("Acuerdo de Junta de Gobierno"); las ayudas
+municipales reales (Chiquibecas de educación infantil, libros/material escolar, ayudas a mayores
+de 85, Erasmus municipal, comercio…) solo están en `logrono.es/becas-y-subvenciones`. El conector
+sigue el patrón region-first: enumera todas las fichas (listado paginado), descarta el ruido
+(actos de ciclo de vida —adjudicación/concesión/pago—, ayudas a entidades/empresas, cooperación
+internacional, concursos), filtra por **recencia** (≥2024), clasifica por categoría y deja el
+resto en `data/revision_logrono.md`.
+
+```powershell
+python src/ingesta/fuentes/logrono.py
+python src/ingestar_fuentes.py --candidatos data/candidatos_logrono.jsonl --indexar --min-palabras 120
+```
+
+Validación local 2026-06-15: 269 fichas → 76 descartadas (ruido) + histórico (<2024) → **25
+clasificadas** indexadas, 0 errores. Gate completo 5/5 PASS. Limitación conocida: la misma ayuda
+aparece a veces en varios años/fraseos que el dedup no colapsa del todo (revisar antes de escalar).
 
 ## Ingesta manual multi-fuente
 

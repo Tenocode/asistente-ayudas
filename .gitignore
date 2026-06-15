@@ -37,7 +37,7 @@ data/candidatos_bdns.jsonl
 data/candidatos_*.jsonl
 data/test_*.jsonl
 data/evaluaciones/*.md
-data/revision_bdns_larioja.md
+data/revision_*.md
 data/_bdns_universo_larioja.json
 data/_ediciones_borradas.json
 debug.log
