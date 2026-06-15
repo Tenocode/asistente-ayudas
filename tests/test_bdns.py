@@ -99,6 +99,12 @@ check_true("clave_dedup ignora año",
            bdns._clave_dedup("BONO ALQUILER JOVEN 2025") == bdns._clave_dedup("Bono Alquiler Joven 2026"))
 check_true("clave_dedup distingue ayudas distintas",
            bdns._clave_dedup("Bono Alquiler Joven") != bdns._clave_dedup("Bono Infantil"))
+check_true("clave_dedup ignora articulos/convocatoria (caso Santander 2025/2026)",
+           bdns._clave_dedup("Convocatoria las «Becas Santander | Movilidad Internacional no Erasmus 2026»")
+           == bdns._clave_dedup("Convocatoria «Becas Santander | Movilidad Internacional no Erasmus 2025»"))
+check_true("clave_dedup NO fusiona Erasmus vs Movilidad",
+           bdns._clave_dedup("Becas Santander Erasmus 2025")
+           != bdns._clave_dedup("Becas Santander Movilidad 2025"))
 
 ediciones = [
     ({"descripcion": "BONO ALQUILER JOVEN 2025", "numeroConvocatoria": "100"}, "larioja", "vivienda"),

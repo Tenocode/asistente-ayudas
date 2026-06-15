@@ -30,9 +30,9 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 | Vigencia (`src/db/vigencia.py`) | ✅ Marca abierta/cerrada/desconocida; las cerradas bajan en ranking y avisan |
 | Pipeline de actualización completo | 🔄 En curso (Fase 5) |
 
-Datos locales comprobados el 2026-06-13 (tras la ingesta BDNS region-first): **186 fuentes**
-y **1927 fragmentos** en Postgres (**157 PDF + 29 HTML**). Vigencia: 41 abiertas, 44 cerradas,
-101 desconocidas. La Rioja pasa de 47 a **125 fuentes**.
+Datos locales comprobados el 2026-06-15 (tras la ingesta BDNS region-first y la limpieza de
+ediciones obsoletas): **184 fuentes** y **1899 fragmentos** en Postgres (**155 PDF + 29 HTML**).
+La Rioja pasa de 47 a ~123 fuentes.
 
 Hallazgo y acción 2026-06-13 (barrido region-first): el universo riojano de BDNS (2025–2026)
 es de **1.613 convocatorias**, no las ~190 que veía el método por keyword. Tras descartar ruido
@@ -195,6 +195,16 @@ queda en "No aparece" en vez de inventar. Congelado en `tests/test_extractor.py`
 fue seguro de hacer **después** de robustecer el gate de cuantías (si no, la variación de fraseo
 del 3B daba falsos rojos).
 
+**Limpieza de ediciones obsoletas (2026-06-15).** La misma ayuda reconvocada cada año quedaba
+indexada varias veces (p. ej. "Becas Santander Movilidad 2025" y "...2026"). El dedup del barrido
+se saltaba algunos pares por una palabra vacía ("Convocatoria **las** «Becas...»" vs "Convocatoria
+«Becas...»"); se endureció `_clave_dedup` (quita artículos y "convocatoria") con test en
+`tests/test_bdns.py`. Para limpiar lo ya indexado: `src/db/limpiar_ediciones.py` agrupa por
+ambito+nombre-sin-año y borra **solo** las ediciones de años anteriores que estén `cerrada`
+cuando existe una edición más reciente del mismo grupo (conserva la más reciente aunque esté
+cerrada; nunca toca abiertas, desconocidas ni grupos de una sola edición). Dry-run por defecto;
+`--aplicar` borra (con backup JSON) — validar con el gate después.
+
 ---
 
 ## Siguiente paso concreto — Fase 5: pipeline de actualización
@@ -340,6 +350,7 @@ asistente-ayudas/
     db/
       init_db.py          # crea tablas `fuentes` + `fragmentos` (DROP + CREATE)
       vigencia.py         # marca fecha_fin/estado (abierta/cerrada/desconocida) leyendo el texto
+      limpiar_ediciones.py # borra ediciones anuales obsoletas (dry-run / --aplicar)
     ingesta/
       trocear.py          # extrae texto de PDFs y trocea en fragmentos ~500 palabras
       modelos.py          # tipos de datos: CandidatoFuente, FuenteExtraida

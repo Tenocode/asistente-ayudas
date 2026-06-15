@@ -244,15 +244,23 @@ def _anio_de(nombre: str) -> int:
     return max(anios) if anios else 0
 
 
+# Palabras vacias que NO distinguen una ayuda de otra: articulos y "convocatoria".
+# Se quitan de la clave para que "Convocatoria LAS «Becas...»" y "Convocatoria «Becas...»"
+# (misma ayuda, distinto año) colapsen. Conservador: NO se quitan palabras de contenido
+# ("becas", "erasmus", "movilidad"...) para no fusionar ayudas distintas.
+_STOP_DEDUP = {"convocatoria", "convocatorias", "la", "el", "las", "los", "un", "una", "unos", "unas"}
+
+
 def _clave_dedup(nombre: str) -> str:
-    """Nombre normalizado SIN años ni 'curso XX/XX', para agrupar ediciones de la misma ayuda."""
+    """Nombre normalizado SIN años, 'curso XX/XX', articulos ni 'convocatoria', para
+    agrupar ediciones de la misma ayuda aunque varie alguna palabra vacia."""
     t = _normalizar_ascii(nombre)
     t = _RE_CURSO_LARGO.sub(" ", t)
     t = _RE_ANIO.sub(" ", t)
     t = _RE_CURSO.sub(" ", t)
     t = re.sub(r"[^a-z0-9% ]+", " ", t)   # quita puntuacion
-    t = re.sub(r"\s+", " ", t).strip()
-    return t
+    palabras = [w for w in t.split() if w not in _STOP_DEDUP]
+    return " ".join(palabras).strip()
 
 
 def _dedup_ediciones(items: list[tuple]) -> tuple[list[tuple], int]:
