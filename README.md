@@ -169,6 +169,8 @@ bueno sin la batería verde**.
   inter-admin, ámbito, dedup de ediciones). Sin red ni base. Veredicto VERDE/ROJO con código de
   salida. Ejecutar tras tocar `bdns.py`. Congela regresiones tipo "carnaval→vivienda".
 - `python tests/test_eval_cuantias.py` → tests del **matcher de cuantías** del gate. Sin red ni LLM.
+- `python tests/test_extractor.py` → tests del **extractor de detalles** (presupuesto/firma no se
+  cuelan como dato; la cuantía individual real sobrevive). Sin red ni LLM.
 
 Cada caso es **bloqueante** (su fallo = regresión = batería en rojo) u **objetivo** (hueco
 conocido: se mide pero no bloquea). Al cerrar una mejora, **añadir/actualizar el caso** con sus
@@ -182,6 +184,16 @@ importe a *(cifra, unidad)* y compara por **token exacto + clase de unidad** (`�
 `"70 euros"` casa `"70 €/m²"` pero **no** `"1.970"` ni `"70%"`. Cada cuantía esperada admite
 alternativas con `|` (p. ej. `pyme_maquinaria` acepta el precio/m² **o** el rango de inversión,
 ambos válidos). Diseñado para **no introducir falsos verdes**: ver casos negativos en los tests.
+
+**Fix del "importe = presupuesto global" (2026-06-15).** Síntoma real: para una beca cuyo PDF
+indexado era la *orden de ampliación de crédito* (sin cuantía por persona), el chat citaba como
+importe el **crédito global** ("321.340 euros") que se colaba por el bloque de Beneficiarios.
+Arreglo determinista en `chat.py` (`_scrub_ruido`): antes de mandar los detalles al LLM se quitan
+las **frases de presupuesto/crédito/incremento** y el **boilerplate de firma electrónica** (CSV,
+"no sustituye al documento original"). Si la fuente no tiene cuantía individual, el campo Importe
+queda en "No aparece" en vez de inventar. Congelado en `tests/test_extractor.py`. Este fix solo
+fue seguro de hacer **después** de robustecer el gate de cuantías (si no, la variación de fraseo
+del 3B daba falsos rojos).
 
 ---
 

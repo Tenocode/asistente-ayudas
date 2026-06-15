@@ -128,15 +128,45 @@ _RE_PCT = re.compile(r"\d[\d.,]*\s*%")
 
 # Lineas que hablan del presupuesto/credito global de la convocatoria, no de la
 # cuantia que recibe el ciudadano. No deben colarse como "Importe".
+# OJO: terminos especificos de presupuesto, no genericos como "asciende a" (que
+# tambien usan las cuantias individuales: "la ayuda asciende a 2.700 euros").
 _PALABRAS_PRESUPUESTO = (
     "importe total", "presupuest", "aplicacion presupuestaria", "credito disponible",
     "millones de euros", "dotacion", "aprobar el gasto", "cargo a la aplicacion",
-    "gasto por importe", "credito total",
+    "gasto por importe", "credito total", "incremento asciende", "existencia de credito",
+    "credito adecuado", "ampliar el credito", "incremento del credito",
+    "incrementa el credito", "modificacion de credito",
+)
+
+# Restos de la extraccion de PDF que no son contenido: pies de firma electronica,
+# codigos seguros de verificacion, sellos de validez. Si caen en un bloque, el LLM
+# puede tomarlos como dato. Fuera.
+_PALABRAS_BOILERPLATE = (
+    "no sustituye al documento original", "c.s.v", "csv :", "csv:",
+    "informe de firma", "verificar la integridad", "codigo seguro de verificacion",
+    "direccion de validacion", "run.gob.es",
 )
 
 
 def _es_linea_presupuesto(normalizado: str) -> bool:
     return any(p in normalizado for p in _PALABRAS_PRESUPUESTO)
+
+
+def _es_ruido(normalizado: str) -> bool:
+    """Presupuesto global o boilerplate de firma: nunca debe llegar al LLM como dato."""
+    return _es_linea_presupuesto(normalizado) or any(b in normalizado for b in _PALABRAS_BOILERPLATE)
+
+
+def _scrub_ruido(texto: str) -> str:
+    """
+    Quita de una ventana las FRASES que son presupuesto global o boilerplate de
+    firma, conservando el resto. Asi una cuantia real ("250 euros mensuales") se
+    mantiene aunque su parrafo mencione tambien el credito total, y un "incremento
+    asciende a 321.340 EUROS" (presupuesto) no se cuela como importe del ciudadano.
+    """
+    piezas = re.split(r"(?<=[.;])\s+|\n+", texto)
+    limpias = [p for p in piezas if p.strip() and not _es_ruido(normalizar_ascii(p))]
+    return " ".join(limpias).strip()
 
 
 def _extraer_importe(bloques: list[str], limite: int = 3, max_chars: int = 650) -> list[str]:
@@ -226,6 +256,9 @@ def extraer_detalles_clave(texto_fuente: str, max_chars: int = 1900) -> str:
     for nombre_grupo, claves in grupos:
         if nombre_grupo == "Importe":
             for ventana in _extraer_importe(bloques):
+                ventana = _scrub_ruido(ventana)
+                if not ventana:
+                    continue
                 clave_vista = normalizar_ascii(ventana[:180])
                 if clave_vista in vistos:
                     continue
@@ -247,7 +280,11 @@ def extraer_detalles_clave(texto_fuente: str, max_chars: int = 1900) -> str:
                     continue
                 max_bloques_ventana = 2 if nombre_grupo in {"Plazo", "Solicitud"} else 4
                 ventana = construir_ventana(bloques, i, max_bloques=max_bloques_ventana)
-                ventana = limpiar_texto(ventana)
+                # Quita frases de presupuesto/firma: no son datos del ciudadano y
+                # son justo lo que hacia que el LLM citara el credito global como importe.
+                ventana = _scrub_ruido(limpiar_texto(ventana))
+                if len(ventana) < 15:
+                    continue
                 clave_vista = normalizar_ascii(ventana[:180])
                 if clave_vista in vistos:
                     continue
