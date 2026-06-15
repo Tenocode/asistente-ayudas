@@ -168,11 +168,20 @@ bueno sin la batería verde**.
 - `python tests/test_bdns.py` → tests deterministas del conector BDNS (clasificador, blacklist,
   inter-admin, ámbito, dedup de ediciones). Sin red ni base. Veredicto VERDE/ROJO con código de
   salida. Ejecutar tras tocar `bdns.py`. Congela regresiones tipo "carnaval→vivienda".
+- `python tests/test_eval_cuantias.py` → tests del **matcher de cuantías** del gate. Sin red ni LLM.
 
 Cada caso es **bloqueante** (su fallo = regresión = batería en rojo) u **objetivo** (hueco
 conocido: se mide pero no bloquea). Al cerrar una mejora, **añadir/actualizar el caso** con sus
 cuantías esperadas para congelarlo. Así una cifra que hoy funciona no se puede perder en
 silencio mañana. Workflow ligero (gate + golden set); CI/CD pesado todavía es prematuro.
+
+**Matcher de cuantías robusto (2026-06-13).** El gate ya no compara importes por substring
+literal (era frágil: `"70 euros"` no casaba `"70 €/m²"` y un cambio menor de fraseo del 3B
+ponía la batería en rojo sin haber regresión real). Ahora `evaluar_rag.py` canonicaliza cada
+importe a *(cifra, unidad)* y compara por **token exacto + clase de unidad** (`€`/`%`/ninguna):
+`"70 euros"` casa `"70 €/m²"` pero **no** `"1.970"` ni `"70%"`. Cada cuantía esperada admite
+alternativas con `|` (p. ej. `pyme_maquinaria` acepta el precio/m² **o** el rango de inversión,
+ambos válidos). Diseñado para **no introducir falsos verdes**: ver casos negativos en los tests.
 
 ---
 
@@ -344,6 +353,7 @@ asistente-ayudas/
     ingestar_fuentes.py   # CLI: extrae e indexa candidatos de candidatos.jsonl
   tests/
     test_bdns.py          # tests deterministas del conector BDNS (sin red/base)
+    test_eval_cuantias.py # tests del matcher de cuantias del gate (sin red/LLM)
   docker-compose.yml      # Postgres 16 + pgvector
   requirements.txt
   CLAUDE.md

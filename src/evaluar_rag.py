@@ -63,7 +63,11 @@ CASOS: tuple[CasoEval, ...] = (
         comunidad_raw="La Rioja",
         categoria="empleo",
         esperadas=("Inversiones por pymes", "Inversiones por autónomos y empresas"),
-        cuantias=("70 euros",),
+        # La ayuda tiene dos cuantias validas: precio/m2 del suelo (70 €/m²) y el rango
+        # de inversion subvencionable (20.000–1.500.000 €). El LLM puede citar cualquiera;
+        # ambas son correctas, asi que aceptamos OR (antes exigia solo "70 euros" y el
+        # gate se ponia rojo si el 3B elegia el rango, que es igual de valido).
+        cuantias=("70 euros|1.500.000 euros",),
         bloqueante=True,
     ),
     CasoEval(
@@ -205,6 +209,55 @@ def contiene(texto: str, patron: str) -> bool:
     return normalizar_ascii(patron) in normalizar_ascii(texto)
 
 
+# --- Matcher de cuantias robusto -------------------------------------------
+# Compara IMPORTES por cifra canonica + clase de unidad, no por substring literal.
+# Asi "70 euros" (golden) casa con "70 €/m²" o "70 €" (lo que escriba el LLM), pero
+# NO con "1.970" (token completo, no subcadena) ni con "70%" (unidad distinta).
+# Cada elemento de cuantias puede llevar alternativas con "|": basta con una.
+_RE_IMPORTE = re.compile(r"(\d[\d.,]*)\s*(%|€|euros|euro|eur)?", re.IGNORECASE)
+
+
+def _canon_num(numero: str) -> str | None:
+    """'1.500.000,00' -> '1500000'; '2.700' -> '2700'. Quita decimales y separadores."""
+    entero = numero.split(",")[0].replace(".", "").strip()
+    return entero if entero.isdigit() else None
+
+
+def _canon_unidad(unidad: str | None) -> str:
+    """Tres clases: '%' , '€' (euros/eur/€) o '' (sin unidad)."""
+    if not unidad:
+        return ""
+    return "%" if unidad == "%" else "€"
+
+
+def _canon_importes(texto: str) -> set[tuple[str, str]]:
+    """Conjunto de (cifra, unidad) presentes en el texto, en forma canonica."""
+    encontrados: set[tuple[str, str]] = set()
+    for m in _RE_IMPORTE.finditer(texto or ""):
+        num = _canon_num(m.group(1))
+        if num:
+            encontrados.add((num, _canon_unidad(m.group(2))))
+    return encontrados
+
+
+def importe_satisface(esperado: str, presentes: set[tuple[str, str]]) -> bool:
+    """
+    True si alguna alternativa ('a|b|c') del importe esperado esta presente.
+    Una alternativa se cumple si TODOS sus tokens (cifra+unidad) estan en `presentes`,
+    con igualdad EXACTA de cifra y unidad compatible (unidad vacia en el esperado = comodin).
+    """
+    for alt in esperado.split("|"):
+        tokens = _canon_importes(alt)
+        if not tokens:
+            continue
+        if all(
+            any(rnum == enum and (eunit == "" or eunit == runit) for rnum, runit in presentes)
+            for enum, eunit in tokens
+        ):
+            return True
+    return False
+
+
 def analizar_caso(
     caso: CasoEval,
     top_ayudas: list[dict],
@@ -238,9 +291,12 @@ def analizar_caso(
             fallos.append("nombres")
 
     # 2. Cuantias obligatorias (golden set). Solo con LLM.
+    # Match por cifra canonica + unidad (no substring): robusto al fraseo del modelo
+    # ("70 euros" == "70 €/m²") sin colar falsos positivos ("70 euros" != "1.970").
     if caso.cuantias:
         if respuesta is not None:
-            faltan = [c for c in caso.cuantias if normalizar_ascii(c) not in normalizar_ascii(resp_low)]
+            presentes = _canon_importes(respuesta)
+            faltan = [c for c in caso.cuantias if not importe_satisface(c, presentes)]
             lineas.append(
                 f"cuantias: {len(caso.cuantias) - len(faltan)}/{len(caso.cuantias)}"
                 + (f" FALTAN {faltan}" if faltan else "")
