@@ -14,6 +14,7 @@ import argparse
 import re
 import sys
 import unicodedata
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -35,6 +36,8 @@ _RE_FECHA_LARGA = re.compile(r"(\d{1,2})\s+de\s+([a-z]+)\s+de\s+(\d{4})")
 _RE_FECHA_PEGADA = re.compile(r"(\d{1,2})de([a-z]+)de(\d{4})")
 # "30/09/2026" o "30-09-2026"
 _RE_FECHA_NUM = re.compile(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})")
+# Años plausibles (2010-2039) para estimar el horizonte temporal del documento.
+_RE_ANIO = re.compile(r"\b(20[1-3]\d)\b")
 
 # Senales de que la fecha que sigue es el CIERRE del plazo.
 _CLAVES_CIERRE = (
@@ -73,6 +76,17 @@ def _primera_fecha(fragmento: str) -> date | None:
     return None
 
 
+def _anio_dominante(texto_normalizado: str) -> int | None:
+    """Año que más veces aparece en el documento: aproxima su horizonte temporal.
+    Una convocatoria de 2026 repite "2026" muchas veces. Usamos la MODA (no el
+    máximo) porque el máximo se contamina con cifras mal leídas como años
+    (presupuestos, códigos) que dan 2064, 2088, etc."""
+    anios = [int(y) for y in _RE_ANIO.findall(texto_normalizado)]
+    if not anios:
+        return None
+    return Counter(anios).most_common(1)[0][0]
+
+
 def extraer_fecha_fin(texto: str) -> date | None:
     """
     Devuelve la fecha de cierre de plazo mas tardia que aparece cerca de una
@@ -100,6 +114,18 @@ def extraer_fecha_fin(texto: str) -> date | None:
 
     if not candidatas:
         return None
+
+    # Descarta back-references: una fecha de cierre anterior al horizonte propio
+    # del documento (su año dominante) no es su plazo, sino una cita a un marco
+    # anterior. Ej.: el "Plan Estatal Vivienda 2026-2030" menciona "hasta el 31
+    # de diciembre de 2022" (clausula presupuestaria del plan previo); sin esto
+    # el plan salia como "cerrado en 2022", que es absurdo.
+    dom = _anio_dominante(n)
+    if dom is not None:
+        candidatas = [f for f in candidatas if f.year >= dom]
+    if not candidatas:
+        return None
+
     # el cierre real es la fecha limite mas tardia entre las asociadas a cierre
     return max(candidatas)
 

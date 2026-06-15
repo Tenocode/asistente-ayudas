@@ -1,0 +1,184 @@
+:root {
+  --azul: #1a56db;
+  --azul-osc: #1447b2;
+  --fondo: #f4f6fb;
+  --tinta: #1f2933;
+  --gris: #6b7280;
+  --borde: #e5e7eb;
+  --verde: #047857;
+  --verde-bg: #d1fae5;
+  --rojo: #b91c1c;
+  --rojo-bg: #fee2e2;
+  --ambar: #92400e;
+  --ambar-bg: #fef3c7;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--fondo);
+  color: var(--tinta);
+}
+
+.app {
+  max-width: 780px;
+  margin: 0 auto;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app__header {
+  padding: 1.1rem 1.4rem;
+  background: linear-gradient(135deg, var(--azul), #2563eb);
+  color: #fff;
+}
+.app__header h1 { font-size: 1.2rem; font-weight: 700; }
+.app__header p { font-size: 0.8rem; opacity: 0.9; margin-top: 0.15rem; }
+
+.chat {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.msg {
+  max-width: 88%;
+  padding: 0.8rem 1.05rem;
+  border-radius: 14px;
+  line-height: 1.55;
+  font-size: 0.94rem;
+  word-break: break-word;
+}
+
+.msg--user {
+  align-self: flex-end;
+  background: var(--azul);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.msg--bot {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid var(--borde);
+  border-bottom-left-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.msg--thinking { color: var(--gris); font-style: italic; }
+
+/* --- Markdown del bot --- */
+.msg__text p { margin: 0.4rem 0; }
+.msg__text p:first-child { margin-top: 0; }
+.msg__text p:last-child { margin-bottom: 0; }
+.msg__text ul, .msg__text ol { margin: 0.4rem 0 0.4rem 1.2rem; }
+.msg__text li { margin: 0.2rem 0; }
+.msg__text strong { font-weight: 700; }
+.msg__text h1, .msg__text h2, .msg__text h3 {
+  font-size: 1rem;
+  margin: 0.6rem 0 0.3rem;
+}
+.msg__text hr { border: none; border-top: 1px solid var(--borde); margin: 0.7rem 0; }
+.msg__text a { color: var(--azul); }
+
+/* --- Tarjetas de ayuda --- */
+.ayudas {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.ayuda-card {
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+  background: #fbfcfe;
+}
+
+.ayuda-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.ayuda-card__title { font-size: 0.9rem; font-weight: 700; line-height: 1.35; }
+
+.ayuda-card__meta { font-size: 0.78rem; color: var(--gris); margin-top: 0.35rem; }
+
+.badge {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.badge-abierta { color: var(--verde); background: var(--verde-bg); }
+.badge-cerrada { color: var(--rojo); background: var(--rojo-bg); }
+.badge-desconocida { color: var(--ambar); background: var(--ambar-bg); }
+
+.ayuda-card__link {
+  display: inline-block;
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--azul);
+  text-decoration: none;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--azul);
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+.ayuda-card__link:hover { background: var(--azul); color: #fff; }
+
+.ayuda-card__nolink {
+  display: inline-block;
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--gris);
+  font-style: italic;
+}
+
+/* --- Caja de escritura --- */
+.composer {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.8rem 1.2rem 1.1rem;
+  border-top: 1px solid var(--borde);
+  background: var(--fondo);
+}
+
+.composer__input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1.5px solid var(--borde);
+  border-radius: 999px;
+  font-size: 0.94rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.composer__input:focus { border-color: var(--azul); }
+
+.composer__btn {
+  padding: 0.75rem 1.4rem;
+  background: var(--azul);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-size: 0.94rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.composer__btn:hover:not(:disabled) { background: var(--azul-osc); }
+.composer__btn:disabled { background: #9ca3af; cursor: default; }

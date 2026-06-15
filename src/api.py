@@ -12,7 +12,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from rag.buscar import buscar_filtrado
-from rag.chat import CATEGORIAS, COMUNIDADES, generar_respuesta, normalizar
+from rag.chat import (
+    CATEGORIAS,
+    COMUNIDADES,
+    generar_respuesta,
+    normalizar,
+    seleccionar_top_ayudas,
+)
 
 app = FastAPI(title="Asistente Ayudas")
 
@@ -32,9 +38,34 @@ class ChatRequest(BaseModel):
     mensaje: str
 
 
+class Ayuda(BaseModel):
+    """Datos estructurados de una ayuda del top, para que el front pinte la
+    tarjeta y el enlace clicable a la fuente oficial (el texto explicado sigue
+    yendo en `respuesta`)."""
+    nombre: str
+    url_oficial: str | None = None
+    estado: str | None = None
+    fecha_fin: str | None = None
+    tipo_fuente: str | None = None
+
+
 class ChatResponse(BaseModel):
     session_id: str
     respuesta: str
+    ayudas: list[Ayuda] = []
+
+
+def _serializar_ayudas(top_ayudas: list[dict]) -> list[Ayuda]:
+    return [
+        Ayuda(
+            nombre=a["nombre"],
+            url_oficial=a.get("url_oficial"),
+            estado=a.get("estado"),
+            fecha_fin=a["fecha_fin"].isoformat() if a.get("fecha_fin") else None,
+            tipo_fuente=a.get("tipo_fuente"),
+        )
+        for a in top_ayudas
+    ]
 
 
 def nueva_sesion(
@@ -107,6 +138,7 @@ def chat(req: ChatRequest):
     sesion = sessions[sid]
     mensaje = req.mensaje.strip()
     estado = sesion["estado"]
+    ayudas: list[Ayuda] = []
 
     if estado == "esperando_comunidad":
         comunidad = normalizar(mensaje, COMUNIDADES)
@@ -175,6 +207,9 @@ def chat(req: ChatRequest):
             resultados = buscar_filtrado(descripcion, comunidad="todas", categoria="todas", k=20)
 
         respuesta_llm = generar_respuesta(perfil, resultados)
+        # Misma selección determinista que usa generar_respuesta por dentro, así
+        # las tarjetas del front coinciden con las ayudas explicadas en el texto.
+        ayudas = _serializar_ayudas(seleccionar_top_ayudas(perfil, resultados, limite=3))
         respuesta = respuesta_llm + "\n\n---\n¿Quieres buscar otro tipo de ayuda? Escribe 'sí' para empezar de nuevo."
 
     elif estado == "fin":
@@ -189,7 +224,7 @@ def chat(req: ChatRequest):
         sessions.pop(sid, None)
         respuesta = "Ha ocurrido un error con la sesión. Recarga la página para empezar."
 
-    return ChatResponse(session_id=sid, respuesta=respuesta)
+    return ChatResponse(session_id=sid, respuesta=respuesta, ayudas=ayudas)
 
 
 _static_dir = Path(__file__).parent / "static"

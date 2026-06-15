@@ -44,3 +44,7 @@ debug.log
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Frontend (React/Vite)
+frontend/node_modules/
+frontend/dist/

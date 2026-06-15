@@ -21,7 +21,7 @@ en claro, con importe, plazo y enlace oficial, citando siempre la convocatoria f
 | Indexar PDFs (`src/indexar.py`) | ✅ 68 PDFs indexados (1120 fragmentos) |
 | Búsqueda semántica (`src/rag/buscar.py`) | ✅ Coseno con pgvector |
 | Respuesta con LLM (`src/rag/chat.py`) | ✅ Ollama + llama3.2 (3B) citando fuentes y detalles clave; tope de tokens y blindaje anti-invención |
-| Interfaz web (`src/api.py` + `src/static/index.html`) | ✅ FastAPI + chat. Arrancar: `python src/api.py` |
+| Interfaz web (`src/api.py` + `frontend/` React) | ✅ Backend FastAPI + front React/Vite (tarjetas con estado y enlace clicable a la fuente). Front legacy vanilla en `src/static/`. Arrancar: backend `python src/api.py` + `cd frontend && npm run dev` |
 | Widget embebible (`src/static/widget.html` + `src/static/embed.js`) | 🧪 MVP técnico; pendiente de validar |
 | Ingesta multi-fuente (`src/ingesta/`) | ✅ Pipeline JSONL + adaptadores PDF/HTML/bdns_api |
 | **BDNS API** (`src/ingesta/fuentes/bdns.py`) | ✅ Descubrimiento por keyword **y por región** (`--por-region`: barre TODO La Rioja) |
@@ -200,6 +200,8 @@ bueno sin la batería verde**.
 - `python tests/test_eval_cuantias.py` → tests del **matcher de cuantías** del gate. Sin red ni LLM.
 - `python tests/test_extractor.py` → tests del **extractor de detalles** (presupuesto/firma no se
   cuelan como dato; la cuantía individual real sobrevive). Sin red ni LLM.
+- `python tests/test_vigencia.py` → tests del **detector de vigencia**: descarta back-references de
+  fechas (un plan 2026-2030 no cierra en 2022) y conserva los plazos reales. Sin red ni base.
 
 Cada caso es **bloqueante** (su fallo = regresión = batería en rojo) u **objetivo** (hueco
 conocido: se mide pero no bloquea). Al cerrar una mejora, **añadir/actualizar el caso** con sus
@@ -223,6 +225,16 @@ las **frases de presupuesto/crédito/incremento** y el **boilerplate de firma el
 queda en "No aparece" en vez de inventar. Congelado en `tests/test_extractor.py`. Este fix solo
 fue seguro de hacer **después** de robustecer el gate de cuantías (si no, la variación de fraseo
 del 3B daba falsos rojos).
+
+**Fix de back-reference en vigencia (2026-06-15).** Síntoma: "Plan Estatal Vivienda 2026-2030"
+salía como *cerrada el 31/12/2022*. El detector (`src/db/vigencia.py`) tomaba como cierre cualquier
+"hasta el <fecha>", y el texto del plan (un Real Decreto de ~400 KB) incluye "hasta el 31 de
+diciembre de 2022 siempre que la concesión se realice con cargo a..." — una cláusula presupuestaria
+del marco anterior, no el plazo de solicitud. Arreglo: se descartan las fechas de cierre anteriores
+al **año dominante** del documento (la moda de los años que menciona; un RD de 2026 repite "2026").
+Se usa la moda, no el máximo, porque el máximo se contamina con cifras mal leídas como años (2064,
+2088…). Efecto medido sobre el corpus: **solo 1 fuente cambia** (el plan pasa a `desconocida`), las
+45 cerradas legítimas se conservan; gate 5/5 PASS. Congelado en `tests/test_vigencia.py`.
 
 **Limpieza de ediciones obsoletas (2026-06-15).** La misma ayuda reconvocada cada año quedaba
 indexada varias veces (p. ej. "Becas Santander Movilidad 2025" y "...2026"). El dedup del barrido
@@ -413,6 +425,16 @@ asistente-ayudas/
   tests/
     test_bdns.py          # tests deterministas del conector BDNS (sin red/base)
     test_eval_cuantias.py # tests del matcher de cuantias del gate (sin red/LLM)
+  frontend/               # front React/Vite (tarjetas + enlaces clicables)
+    src/
+      App.jsx             # estado del chat (mensajes, sesion, envio)
+      api.js              # llamadas a /inicio y /chat
+      components/
+        Message.jsx       # burbuja: Markdown del bot + tarjetas
+        AyudaCard.jsx     # tarjeta de ayuda con estado + boton a la fuente oficial
+      styles.css          # estilos (tarjetas limpias)
+    vite.config.js        # proxy /inicio y /chat -> :8000
+    package.json
   docker-compose.yml      # Postgres 16 + pgvector
   requirements.txt
   CLAUDE.md
@@ -457,9 +479,27 @@ python src/indexar.py   # trocea, genera embeddings e inserta en Postgres
 
 ## Arrancar la web
 
+Hay dos frentes sobre el mismo backend FastAPI:
+
+**Backend (siempre):**
 ```powershell
-python src/api.py
+python src/api.py            # FastAPI en http://localhost:8000
 ```
+
+**Front React/Vite (recomendado, el bonito con tarjetas y enlaces clicables):**
+```powershell
+cd frontend
+npm install                 # solo la primera vez
+npm run dev                 # Vite en http://localhost:5173
+```
+Abre **http://localhost:5173**. Vite hace de proxy de `/inicio` y `/chat` al backend
+(`:8000`), así que necesitas los **dos procesos** arrancados a la vez (backend + `npm run dev`).
+El front renderiza Markdown y pinta cada ayuda como tarjeta con su estado (abierta/cerrada)
+y un botón a la convocatoria oficial (PDF o web). El `/chat` devuelve ahora también
+`ayudas[]` (nombre, url_oficial, estado, fecha_fin, tipo_fuente) además del texto.
+
+**Front legacy (vanilla, sin tarjetas):** sigue servido por FastAPI en
+http://localhost:8000 (`src/static/index.html`). Útil como fallback o para el widget.
 
 ## Evaluar el RAG sin probar a mano
 
